@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>8-Bit Casino</title>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-YOUR_ADSENSE_PUBLISHER_ID" crossorigin="anonymous"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#0a0a1a;font-family:'Press Start 2P',monospace;color:#fff;overflow:hidden;}
+  #ad-top{width:100%;height:50px;background:#111;display:flex;align-items:center;justify-content:center;border-bottom:2px solid #ffd700;font-size:8px;color:#555;}
+  #ui-wrapper{display:flex;width:100vw;height:calc(100vh - 50px);}
+  #ad-sidebar{width:120px;background:#0d0d1f;border-right:2px solid #ffd700;display:flex;flex-direction:column;align-items:center;padding:8px;font-size:7px;color:#555;gap:8px;}
+  #game-area{flex:1;position:relative;background:#0a0a1a;}
+  #casino-canvas{position:absolute;top:0;left:0;image-rendering:pixelated;image-rendering:crisp-edges;}
+  #hud{position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.85);border:2px solid #ffd700;padding:8px 12px;font-size:8px;line-height:2;z-index:10;pointer-events:none;}
+  #hud span{color:#ffd700;}
+  #minimap{position:absolute;top:8px;right:8px;border:2px solid #ffd700;z-index:10;}
+  #interact-hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);border:2px solid #ffd700;padding:8px 16px;font-size:8px;color:#ffd700;z-index:10;pointer-events:none;opacity:0;transition:opacity 0.3s;}
+  #interact-hint.show{opacity:1;}
+  #modal-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,0.9);z-index:100;align-items:center;justify-content:center;}
+  #modal-overlay.active{display:flex;}
+  #modal-box{background:#0d0d2a;border:3px solid #ffd700;padding:20px;max-width:580px;width:95%;max-height:88vh;overflow-y:auto;font-size:8px;line-height:2;}
+  #modal-box h2{color:#ffd700;margin-bottom:12px;font-size:11px;}
+  .btn{display:inline-block;margin:3px 2px;padding:7px 12px;background:#ffd700;color:#000;cursor:pointer;border:none;font-family:'Press Start 2P',monospace;font-size:7px;}
+  .btn:hover{background:#ffec6e;}
+  .btn.red{background:#e74c3c;color:#fff;}.btn.red:hover{background:#ff6b6b;}
+  .btn.green{background:#2ecc71;color:#000;}.btn.green:hover{background:#58d68d;}
+  .btn.gray{background:#555;color:#fff;}.btn.gray:hover{background:#777;}
+  .btn.blue{background:#3498db;color:#fff;}
+  input[type=number]{background:#111;border:2px solid #ffd700;color:#ffd700;padding:5px;font-family:'Press Start 2P',monospace;font-size:7px;width:80px;margin:3px;}
+  .card-row{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0;}
+  .card{width:34px;height:50px;background:#fff;color:#000;border:2px solid #333;display:flex;align-items:center;justify-content:center;font-size:8px;border-radius:3px;font-family:'Press Start 2P',monospace;flex-direction:column;}
+  .card.red-suit{color:#e74c3c;}
+  .card.back{background:#1a237e;}
+  .slot-reels{display:flex;gap:8px;justify-content:center;margin:10px 0;}
+  .reel{width:64px;height:64px;background:#111;border:3px solid #ffd700;display:flex;align-items:center;justify-content:center;font-size:32px;}
+  .die-face{font-size:48px;display:inline-block;margin:0 6px;}
+</style>
+</head>
+<body>
+
+<div id="ad-top">
+  <ins class="adsbygoogle" style="display:inline-block;width:728px;height:50px"
+    data-ad-client="ca-pub-YOUR_ADSENSE_PUBLISHER_ID"
+    data-ad-slot="YOUR_AD_SLOT_ID_1"></ins>
+  <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>
+</div>
+
+<div id="ui-wrapper">
+  <div id="ad-sidebar">
+    <div style="color:#555;font-size:6px">AD</div>
+    <ins class="adsbygoogle" style="display:inline-block;width:100px;height:200px"
+      data-ad-client="ca-pub-YOUR_ADSENSE_PUBLISHER_ID"
+      data-ad-slot="YOUR_AD_SLOT_ID_2"></ins>
+    <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>
+  </div>
+  <div id="game-area">
+    <canvas id="casino-canvas"></canvas>
+    <div id="hud">
+      💰 CHIPS: <span id="hud-chips">1000</span><br>
+      🕹 WASD / ARROWS = Move<br>
+      ⏎ ENTER = Play Game
+    </div>
+    <canvas id="minimap" width="110" height="82"></canvas>
+    <div id="interact-hint">⏎ ENTER to Play!</div>
+    <div id="modal-overlay">
+      <div id="modal-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// SETUP
+// ══════════════════════════════════════════════
+const canvas = document.getElementById('casino-canvas');
+const ctx = canvas.getContext('2d');
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+const gameArea = document.getElementById('game-area');
+
+const TILE = 40;
+const COLS = 32, ROWS = 24;
+let playerChips = 1000;
+
+function resizeCanvas(){
+  canvas.width = gameArea.clientWidth;
+  canvas.height = gameArea.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ══════════════════════════════════════════════
+// MAP  (0=floor 1=wall 2=carpet 3=slot-area)
+// ══════════════════════════════════════════════
+const MAP = [];
+for(let r=0;r<ROWS;r++){
+  MAP[r]=[];
+  for(let c=0;c<COLS;c++){
+    MAP[r][c]=(r===0||r===ROWS-1||c===0||c===COLS-1)?1:2;
+  }
+}
+// internal walls with doorways
+function hwall(r,c1,c2,door){for(let c=c1;c<=c2;c++)if(c!==door)MAP[r][c]=1;}
+function vwall(r1,r2,c,door){for(let r=r1;r<=r2;r++)if(r!==door)MAP[r][c]=1;}
+hwall(10,0,16,8);
+hwall(10,18,31,25);
+vwall(0,10,17,5);
+vwall(10,23,17,16);
+
+// Slot floor colour (slightly different)
+for(let r=1;r<10;r++)for(let c=18;c<31;c++)if(MAP[r][c]===2)MAP[r][c]=3;
+for(let r=11;r<23;r++)for(let c=18;c<31;c++)if(MAP[r][c]===2)MAP[r][c]=3;
+
+// ══════════════════════════════════════════════
+// TABLES
+// ══════════════════════════════════════════════
+const TABLES=[
+  {id:'blackjack', label:'BLACKJACK', sign:'🃏',  x:2,  y:2,  w:7, h:4, col:'#0a5c36'},
+  {id:'poker',     label:'POKER',     sign:'♠',   x:2,  y:13, w:7, h:5, col:'#00468b'},
+  {id:'baccarat',  label:'BACCARAT',  sign:'🀄',  x:2,  y:7,  w:7, h:3, col:'#6a0080'},
+  {id:'roulette',  label:'ROULETTE',  sign:'🎡',  x:19, y:2,  w:7, h:4, col:'#8b0000'},
+  {id:'craps',     label:'CRAPS',     sign:'🎲',  x:19, y:12, w:7, h:5, col:'#7a4000'},
+  {id:'slots',     label:'SLOTS',     sign:'🎰',  x:27, y:2,  w:4, h:7, col:'#4a0080'},
+  {id:'keno',      label:'KENO',      sign:'🔢',  x:27, y:12, w:4, h:6, col:'#006060'},
+  {id:'bar',       label:'BAR',       sign:'🍺',  x:10, y:13, w:5, h:5, col:'#3d1500'},
+];
+
+// ══════════════════════════════════════════════
+// PLAYER
+// ══════════════════════════════════════════════
+const player={
+  x:9*TILE, y:12*TILE,
+  w:22, h:30,
+  speed:3,
+  dir:2, frame:0, frameTimer:0
+};
+const keys={};
+document.addEventListener('keydown',e=>{keys[e.key]=true;});
+document.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+// ══════════════════════════════════════════════
+// NPCS
+// ══════════════════════════════════════════════
+const NPC_COLORS=['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e91e63','#ff5722'];
+const NPC_NAMES=['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Hank'];
+const NPCS=NPC_NAMES.map((name,i)=>({
+  name, color:NPC_COLORS[i],
+  x:(3+i*3)*TILE, y:(3+(i%3)*4)*TILE,
+  dir:i%4, frame:0, frameTimer:0,
+  moveTimer:0, dx:0, dy:0
+}));
+
+function canMove(wx,wy,pw,ph){
+  const pts=[[wx+3,wy+ph-2],[wx+pw-3,wy+ph-2],[wx+3,wy+8],[wx+pw-3,wy+8]];
+  for(const[cx,cy]of pts){
+    const tc=Math.floor(cx/TILE),tr=Math.floor(cy/TILE);
+    if(tr<0||tr>=ROWS||tc<0||tc>=COLS)return false;
+    if(MAP[tr][tc]===1)return false;
+  }
+  return true;
+}
+
+function updateNPC(npc,dt){
+  npc.moveTimer-=dt;
+  if(npc.moveTimer<=0){
+    npc.moveTimer=1200+Math.random()*2000;
+    const opts=[[1,0],[-1,0],[0,1],[0,-1],[0,0],[0,0]];
+    const d=opts[Math.floor(Math.random()*opts.length)];
+    npc.dx=d[0]; npc.dy=d[1];
+    if(d[0]>0)npc.dir=1; else if(d[0]<0)npc.dir=3;
+    else if(d[1]>0)npc.dir=2; else if(d[1]<0)npc.dir=0;
+  }
+  const spd=1.5;
+  const nx=npc.x+npc.dx*spd, ny=npc.y+npc.dy*spd;
+  if(canMove(nx,npc.y,20,28))npc.x=nx;
+  if(canMove(npc.x,ny,20,28))npc.y=ny;
+  npc.frameTimer+=dt;
+  if(npc.frameTimer>180){npc.frame=(npc.frame+1)%4;npc.frameTimer=0;}
+}
+
+// ══════════════════════════════════════════════
+// CAMERA
+// ══════════════════════════════════════════════
+let camX=0, camY=0;
+function updateCamera(){
+  const tx=player.x+player.w/2-canvas.width/2;
+  const ty=player.y+player.h/2-canvas.height/2;
+  const maxX=COLS*TILE-canvas.width;
+  const maxY=ROWS*TILE-canvas.height;
+  camX+=(tx-camX)*0.12;
+  camY+=(ty-camY)*0.12;
+  camX=Math.max(0,Math.min(maxX,camX));
+  camY=Math.max(0,Math.min(maxY,camY));
+}
+
+// ══════════════════════════════════════════════
+// DRAW HELPERS
+// ══════════════════════════════════════════════
+function wx(worldX){return worldX-camX;}
+function wy(worldY){return worldY-camY;}
+
+function drawFloor(){
+  const c0=Math.max(0,Math.floor(camX/TILE));
+  const c1=Math.min(COLS,Math.ceil((camX+canvas.width)/TILE));
+  const r0=Math.max(0,Math.floor(camY/TILE));
+  const r1=Math.min(ROWS,Math.ceil((camY+canvas.height)/TILE));
+  for(let r=r0;r<r1;r++){
+    for(let c=c0;c<c1;c++){
+      const t=MAP[r][c];
+      const sx=c*TILE-camX, sy=r*TILE-camY;
+      if(t===1){
+        ctx.fillStyle='#0f3460';
+        ctx.fillRect(sx,sy,TILE,TILE);
+        ctx.fillStyle='#e94560';
+        ctx.fillRect(sx,sy,TILE,5);
+      } else if(t===2){
+        ctx.fillStyle=(r+c)%2===0?'#2d0a4e':'#3a0d60';
+        ctx.fillRect(sx,sy,TILE,TILE);
+        // subtle grid
+        ctx.strokeStyle='rgba(255,255,255,0.04)';
+        ctx.lineWidth=1;
+        ctx.strokeRect(sx,sy,TILE,TILE);
+      } else if(t===3){
+        ctx.fillStyle=(r+c)%2===0?'#0a001a':'#100025';
+        ctx.fillRect(sx,sy,TILE,TILE);
+      }
+    }
+  }
+}
+
+function drawTables(){
+  TABLES.forEach(t=>{
+    const sx=t.x*TILE-camX, sy=t.y*TILE-camY;
+    const tw=t.w*TILE, th=t.h*TILE;
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(sx+5,sy+5,tw,th);
+    // main
+    ctx.fillStyle=t.col;
+    ctx.fillRect(sx,sy,tw,th);
+    // felt
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.fillRect(sx+5,sy+5,tw-10,th-10);
+    // border
+    ctx.strokeStyle='#ffd700';
+    ctx.lineWidth=3;
+    ctx.strokeRect(sx+1,sy+1,tw-2,th-2);
+    // inner border
+    ctx.strokeStyle='rgba(255,215,0,0.3)';
+    ctx.lineWidth=1;
+    ctx.strokeRect(sx+6,sy+6,tw-12,th-12);
+    // label
+    ctx.fillStyle='#ffd700';
+    ctx.font='bold 8px "Press Start 2P"';
+    ctx.textAlign='center';
+    ctx.fillText(t.sign+' '+t.label, sx+tw/2, sy+th/2-4);
+    ctx.font='6px "Press Start 2P"';
+    ctx.fillStyle='rgba(255,215,0,0.7)';
+    ctx.fillText('PRESS ENTER', sx+tw/2, sy+th/2+10);
+    ctx.textAlign='left';
+  });
+}
+
+function drawSprite(worldX,worldY,color,dir,frame,label){
+  const sx=wx(worldX), sy=wy(worldY);
+  const W=22, H=30;
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(sx+W/2,sy+H+2,W/2,4,0,0,Math.PI*2);
+  ctx.fill();
+  // legs
+  ctx.fillStyle='#222';
+  const legBob=(frame%2===0)?2:-2;
+  ctx.fillRect(sx+3,sy+H*0.72+legBob,7,H*0.28);
+  ctx.fillRect(sx+W-10,sy+H*0.72-legBob,7,H*0.28);
+  // body
+  ctx.fillStyle=color;
+  ctx.fillRect(sx+2,sy+H*0.38,W-4,H*0.38);
+  // arms
+  ctx.fillStyle=color;
+  const armBob=(frame%2===0)?-2:2;
+  ctx.fillRect(sx-3,sy+H*0.38+armBob,5,H*0.25);
+  ctx.fillRect(sx+W-2,sy+H*0.38-armBob,5,H*0.25);
+  // head
+  ctx.fillStyle='#f5cba7';
+  ctx.fillRect(sx+4,sy+2,W-8,H*0.36);
+  // eyes
+  ctx.fillStyle='#000';
+  if(dir===2){ctx.fillRect(sx+7,sy+8,3,3);ctx.fillRect(sx+W-10,sy+8,3,3);}
+  else if(dir===0){ctx.fillRect(sx+7,sy+6,3,3);ctx.fillRect(sx+W-10,sy+6,3,3);}
+  else if(dir===1){ctx.fillRect(sx+W-8,sy+7,3,3);}
+  else{ctx.fillRect(sx+5,sy+7,3,3);}
+  // name tag
+  if(label){
+    const tw2=label.length*5+8;
+    ctx.fillStyle='rgba(0,0,0,0.75)';
+    ctx.fillRect(sx+W/2-tw2/2,sy-14,tw2,11);
+    ctx.fillStyle='#ffd700';
+    ctx.font='5px "Press Start 2P"';
+    ctx.textAlign='center';
+    ctx.fillText(label,sx+W/2,sy-5);
+    ctx.textAlign='left';
+  }
+}
+
+function drawLights(){
+  const t=Date.now();
+  // ceiling lights along top wall
+  for(let c=2;c<COLS-1;c+=3){
+    const on=(Math.floor(t/500)+c)%3!==0;
+    ctx.fillStyle=on?`hsl(\${(c*30)%360},100%,60%)`:'#222';
+    ctx.fillRect(c*TILE-camX+14,0-camY+TILE,12,8);
+  }
+}
+
+function drawMinimap(){
+  const SW=110/COLS, SH=82/ROWS;
+  mmCtx.fillStyle='#000';
+  mmCtx.fillRect(0,0,110,82);
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    if(MAP[r][c]===1){mmCtx.fillStyle='#0f3460';mmCtx.fillRect(c*SW,r*SH,SW,SH);}
+  }
+  TABLES.forEach(t=>{
+    mmCtx.fillStyle=t.col;
+    mmCtx.fillRect(t.x*SW,t.y*SH,t.w*SW,t.h*SH);
+  });
+  NPCS.forEach(n=>{
+    mmCtx.fillStyle=n.color;
+    mmCtx.fillRect(n.x/TILE*SW,n.y/TILE*SH,3,3);
+  });
+  // player
+  mmCtx.fillStyle='#ffd700';
+  mmCtx.fillRect(player.x/TILE*SW-2,player.y/TILE*SH-2,5,5);
+  // viewport rect
+  mmCtx.strokeStyle='rgba(255,215,0,0.5)';
+  mmCtx.lineWidth=1;
+  mmCtx.strokeRect(camX/TILE*SW,camY/TILE*SH,(canvas.width/TILE)*SW,(canvas.height/TILE)*SH);
+}
+
+// ══════════════════════════════════════════════
+// NEAR TABLE
+// ══════════════════════════════════════════════
+function nearTable(){
+  const px=player.x/TILE, py=player.y/TILE;
+  for(const t of TABLES){
+    if(px>t.x-1.8&&px<t.x+t.w+0.8&&py>t.y-1.8&&py<t.y+t.h+0.8)return t;
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════
+const overlay=document.getElementById('modal-overlay');
+const modalBox=document.getElementById('modal-box');
+
+function openModal(html){
+  modalBox.innerHTML=html;
+  overlay.classList.add('active');
+}
+function closeModal(){
+  overlay.classList.remove('active');
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeModal();
+  if(e.key==='Enter'&&!overlay.classList.contains('active')){
+    const t=nearTable();
+    if(t)launchGame(t);
+  }
+});
+
+function updateChipsHUD(){
+  document.getElementById('hud-chips').textContent=playerChips;
+  const el=document.getElementById('modal-chips');
+  if(el)el.textContent=playerChips;
+}
+
+// ══════════════════════════════════════════════
+// CARD HELPERS
+// ══════════════════════════════════════════════
+function makeDeck(){
+  const suits=['♠','♥','♦','♣'],ranks=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const d=[];
+  for(const s of suits)for(const r of ranks)d.push({s,r});
+  for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}
+  return d;
+}
+function cardNum(r){
+  if(['J','Q','K'].includes(r))return 10;
+  if(r==='A')return 11;
+  return parseInt(r);
+}
+function handVal(hand){
+  let v=0,a=0;
+  for(const c of hand){v+=cardNum(c.r);if(c.r==='A')a++;}
+  while(v>21&&a>0){v-=10;a--;}
+  return v;
+}
+function cardHTML(c,hidden){
+  if(hidden)return`<div class="card back" style="color:#1a237e">🂠</div>`;
+  const red=c.s==='♥'||c.s==='♦';
+  return`<div class="card \${red?'red-suit':''}">\${c.r}<br>\${c.s}</div>`;
+}
+function handsHTML(hand,hideIdx){
+  return hand.map((c,i)=>cardHTML(c,hideIdx===i)).join('');
+}
+
+// ══════════════════════════════════════════════
+// LAUNCH GAME
+// ══════════════════════════════════════════════
+function launchGame(t){
+  switch(t.id){
+    case'blackjack':gameBlackjack();break;
+    case'poker':gamePoker();break;
+    case'roulette':gameRoulette();break;
+    case'slots':gameSlots();break;
+    case'craps':gameCraps();break;
+    case'baccarat':gameBaccarat();break;
+    case'keno':gameKeno();break;
+    case'bar':gameBar();break;
+  }
+}
+
+// ══════════════════════════════════════════════
+// BLACKJACK
+// ══════════════════════════════════════════════
+function gameBlackjack(){
+  let deck=[],ph=[],dh=[],bet=25,phase='bet';
+  window._bjDeal=function(){
+    bet=parseInt(document.getElementById('bj-bet').value)||25;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    if(bet<1)bet=1;
+    playerChips-=bet;
+    deck=makeDeck();
+    ph=[deck.pop(),deck.pop()];
+    dh=[deck.pop(),deck.pop()];
+    phase='play';
+    bjRender(false,'');
+  };
+  window._bjHit=function(){
+    ph.push(deck.pop());
+    const v=handVal(ph);
+    if(v>21)bjFinish('bust');
+    else if(v===21)bjFinish('stand');
+    else bjRender(false,'');
+  };
+  window._bjStand=function(){
+    while(handVal(dh)<17)dh.push(deck.pop());
+    bjFinish('stand');
+  };
+  window._bjDouble=function(){
+    if(playerChips<bet){alert('Not enough chips!');return;}
+    playerChips-=bet;bet*=2;
+    ph.push(deck.pop());
+    while(handVal(dh)<17)dh.push(deck.pop());
+    bjFinish('stand');
+  };
+  function bjFinish(reason){
+    const pv=handVal(ph),dv=handVal(dh);
+    let msg='',won=0,col='#e74c3c';
+    if(ph.length===2&&pv===21){msg='🃏 BLACKJACK! 3:2!';won=Math.floor(bet*2.5);col='#ffd700';}
+    else if(reason==='bust'){msg='💥 BUST! Dealer wins.';}
+    else if(dv>21){msg='🎉 Dealer busts! You win!';won=bet*2;col='#2ecc71';}
+    else if(pv>dv){msg='🎉 You win!';won=bet*2;col='#2ecc71';}
+    else if(pv===dv){msg='🤝 Push — Tie!';won=bet;col='#ffd700';}
+    else{msg='😞 Dealer wins.';}
+    playerChips+=won;
+    phase='done';
+    bjRender(true,msg,col);
+  }
+  function bjRender(reveal,msg,msgCol){
+    const pv=handVal(ph);
+    const dv=reveal?handVal(dh):'?';
+    openModal(`
+      <h2>🃏 BLACKJACK</h2>
+      <div style="margin-bottom:8px">CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span> &nbsp;|&nbsp; BET: <span style="color:#ffd700">\${bet}</span></div>
+      \${phase!=='bet'?`
+        <div style="margin:6px 0"><b style="color:#aaa">DEALER (\${dv}):</b><div class="card-row">\${handsHTML(dh,reveal?-1:1)}</div></div>
+        <div style="margin:6px 0"><b style="color:#aaa">YOU (\${pv}):</b><div class="card-row">\${handsHTML(ph,-1)}</div></div>
+      `:''}
+      \${msg?`<div style="color:\${msgCol||'#fff'};margin:8px 0;font-size:9px">\${msg}</div>`:''}
+      \${phase==='bet'?`<div style="margin:8px 0">BET: <input type="number" id="bj-bet" value="\${bet}" min="1" max="\${playerChips}"> chips<br><br><button class="btn green" onclick="_bjDeal()">DEAL</button></div>`:''}
+      \${phase==='play'?`
+        <button class="btn green" onclick="_bjHit()">HIT</button>
+        <button class="btn blue" onclick="_bjStand()">STAND</button>
+        \${ph.length===2?`<button class="btn" onclick="_bjDouble()">DOUBLE DOWN</button>`:''}
+      `:''}
+      \${phase==='done'?`<button class="btn green" onclick="gameBlackjack()">NEW HAND</button>`:''}
+      <button class="btn gray" style="margin-left:8px" onclick="closeModal()">LEAVE TABLE</button>
+    `);
+  }
+  bjRender(false,'');
+}
+
+// ══════════════════════════════════════════════
+// ROULETTE
+// ══════════════════════════════════════════════
+function gameRoulette(){
+  const REDS=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+  let betType='red', straightNum=7;
+  window._rouSetBet=function(t){betType=t;document.getElementById('rbet-lbl').textContent=t.toUpperCase();};
+  window._rouSpin=function(){
+    const bet=parseInt(document.getElementById('rou-bet').value)||10;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    const sn=parseInt(document.getElementById('rou-straight').value)||0;
+    straightNum=sn;
+    playerChips-=bet;
+    const num=Math.floor(Math.random()*37);
+    const isRed=REDS.has(num), isBlack=num!==0&&!isRed;
+    let won=0,msg='';
+    if(betType==='red'&&isRed){won=bet*2;msg='🔴 RED wins!';}
+    else if(betType==='black'&&isBlack){won=bet*2;msg='⚫ BLACK wins!';}
+    else if(betType==='even'&&num!==0&&num%2===0){won=bet*2;msg='EVEN wins!';}
+    else if(betType==='odd'&&num!==0&&num%2!==0){won=bet*2;msg='ODD wins!';}
+    else if(betType==='1-18'&&num>=1&&num<=18){won=bet*2;msg='1-18 wins!';}
+    else if(betType==='19-36'&&num>=19&&num<=36){won=bet*2;msg='19-36 wins!';}
+    else if(betType==='straight'&&num===sn){won=bet*36;msg=`🎯 STRAIGHT UP \${num}! x36!`;}
+    else{msg='No win.';}
+    playerChips+=won;
+    const col=num===0?'#2ecc71':isRed?'#e74c3c':'#333';
+    const numLabel=num===0?'0 GREEN':isRed?`\${num} RED`:`\${num} BLACK`;
+    const resultCol=won>0?'#2ecc71':'#e74c3c';
+    openModal(`
+      <h2>🎡 ROULETTE</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="width:120px;height:120px;border-radius:50%;background:\${col};border:4px solid #ffd700;display:flex;align-items:center;justify-content:center;font-size:28px;margin:10px auto">\${num}</div>
+      <div style="color:\${resultCol};margin:8px 0;font-size:9px">\${numLabel} — \${msg} \${won>0?'(+'+won+' chips)':''}</div>
+      \${rouBetUI(bet)}
+      <button class="btn green" onclick="_rouSpin()">🎡 SPIN AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  function rouBetUI(bet){
+    return`
+      <div style="margin:8px 0">BET TYPE: <b id="rbet-lbl" style="color:#ffd700">\${betType.toUpperCase()}</b></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0">
+        <button class="btn red" onclick="_rouSetBet('red')">RED</button>
+        <button class="btn" style="background:#333;color:#fff" onclick="_rouSetBet('black')">BLACK</button>
+        <button class="btn" onclick="_rouSetBet('even')">EVEN</button>
+        <button class="btn" onclick="_rouSetBet('odd')">ODD</button>
+        <button class="btn" onclick="_rouSetBet('1-18')">1-18</button>
+        <button class="btn" onclick="_rouSetBet('19-36')">19-36</button>
+        <button class="btn" onclick="_rouSetBet('straight')">STRAIGHT #</button>
+      </div>
+      <div>Straight #: <input type="number" id="rou-straight" value="\${straightNum}" min="0" max="36" style="width:55px">
+      &nbsp; BET: <input type="number" id="rou-bet" value="\${bet||10}" min="1" max="\${playerChips}"> chips</div><br>
+    `;
+  }
+  openModal(`
+    <h2>🎡 ROULETTE</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="width:120px;height:120px;border-radius:50%;background:radial-gradient(#8b0000,#3d0000);border:4px solid #ffd700;display:flex;align-items:center;justify-content:center;font-size:48px;margin:10px auto">🎡</div>
+    \${rouBetUI(10)}
+    <button class="btn green" onclick="_rouSpin()">🎡 SPIN!</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+// SLOTS
+// ══════════════════════════════════════════════
+function gameSlots(){
+  const SYM=['🍒','🍋','🍊','🍇','⭐','7️⃣','💎','🔔'];
+  window._slotSpin=function(){
+    const bet=parseInt(document.getElementById('slot-bet').value)||10;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    playerChips-=bet;
+    const r=[SYM[Math.floor(Math.random()*SYM.length)],SYM[Math.floor(Math.random()*SYM.length)],SYM[Math.floor(Math.random()*SYM.length)]];
+    let won=0,msg='No match — try again!',col='#e74c3c';
+    if(r[0]===r[1]&&r[1]===r[2]){
+      if(r[0]==='💎'){won=bet*50;msg='💎💎💎 DIAMOND JACKPOT! x50!';}
+      else if(r[0]==='7️⃣'){won=bet*20;msg='7️⃣7️⃣7️⃣ LUCKY SEVENS! x20!';}
+      else if(r[0]==='⭐'){won=bet*10;msg='⭐⭐⭐ TRIPLE STAR! x10!';}
+      else if(r[0]==='🔔'){won=bet*8;msg='🔔🔔🔔 BELLS! x8!';}
+      else{won=bet*5;msg='THREE OF A KIND! x5!';}
+      col='#ffd700';
+    } else if(r[0]===r[1]||r[1]===r[2]||r[0]===r[2]){
+      won=bet*2;msg='✨ PAIR! x2!';col='#2ecc71';
+    }
+    playerChips+=won;
+    openModal(`
+      <h2>🎰 SLOT MACHINE</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div class="slot-reels">\${r.map(s=>`<div class="reel">\${s}</div>`).join('')}</div>
+      <div style="color:\${col};margin:10px 0;font-size:9px">\${msg}</div>
+      <div>BET: <input type="number" id="slot-bet" value="\${bet}" min="1" max="\${playerChips}"> chips</div><br>
+      <button class="btn green" onclick="_slotSpin()">🎰 SPIN!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  openModal(`
+    <h2>🎰 SLOT MACHINE</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div class="slot-reels"><div class="reel">❓</div><div class="reel">❓</div><div class="reel">❓</div></div>
+    <div style="margin:8px 0;color:#aaa;font-size:7px">
+      💎x3=x50 &nbsp; 7️⃣x3=x20 &nbsp; ⭐x3=x10 &nbsp; 🔔x3=x8 &nbsp; 3-match=x5 &nbsp; pair=x2
+    </div>
+    <div>BET: <input type="number" id="slot-bet" value="10" min="1" max="\${playerChips}"> chips</div><br>
+    <button class="btn green" onclick="_slotSpin()">🎰 SPIN!</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+// POKER (5-card draw vs 3 AI)
+// ══════════════════════════════════════════════
+function gamePoker(){
+  const AI=['Alice','Bob','Carol'];
+  let deck,ph,aiH,pot,bet=20;
+  window._pkDeal=function(){
+    bet=parseInt(document.getElementById('pk-bet').value)||20;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    playerChips-=bet;
+    deck=makeDeck();
+    ph=[deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()];
+    aiH=AI.map(()=>[deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()]);
+    pot=bet*(AI.length+1);
+    pkDrawRender();
+  };
+  window._pkDraw=function(){
+    const cbs=document.querySelectorAll('.pk-discard');
+    const disc=[];
+    cbs.forEach((cb,i)=>{if(cb.checked)disc.push(i);});
+    disc.sort((a,b)=>b-a).forEach(i=>{ph.splice(i,1);ph.push(deck.pop());});
+    aiH=aiH.map(h=>{
+      const keep=h.filter(()=>Math.random()>0.45);
+      while(keep.length<5)keep.push(deck.pop());
+      return keep;
+    });
+    pkShowdown();
+  };
+  function rankHand(h){
+    const vs=h.map(c=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].indexOf(c.r)).sort((a,b)=>b-a);
+    const ss=h.map(c=>c.s);
+    const cnt={};vs.forEach(v=>cnt[v]=(cnt[v]||0)+1);
+    const g=Object.values(cnt).sort((a,b)=>b-a);
+    const fl=new Set(ss).size===1;
+    const st=vs[0]-vs[4]===4&&new Set(vs).size===5;
+    if(fl&&st)return 8;if(g[0]===4)return 7;if(g[0]===3&&g[1]===2)return 6;
+    if(fl)return 5;if(st)return 4;if(g[0]===3)return 3;if(g[0]===2&&g[1]===2)return 2;
+    if(g[0]===2)return 1;return 0;
+  }
+  const RN=['High Card','One Pair','Two Pair','Three of a Kind','Straight','Flush','Full House','Four of a Kind','Straight Flush'];
+  function pkShowdown(){
+    const pr=rankHand(ph),ars=aiH.map(h=>rankHand(h));
+    const best=Math.max(pr,...ars);
+    let won=0,msg='';
+    if(pr===best){won=pot;msg=`🏆 YOU WIN! \${RN[pr]}! +\${won} chips!`;}
+    else{msg=`😞 You lose. Your hand: \${RN[pr]}`;}
+    playerChips+=won;
+    openModal(`
+      <h2>♠ POKER — SHOWDOWN</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${msg}</div>
+      <div><b>Your hand (\${RN[pr]}):</b><div class="card-row">\${handsHTML(ph,-1)}</div></div>
+      \${AI.map((n,i)=>`<div><b>\${n} (\${RN[ars[i]]}):</b><div class="card-row">\${handsHTML(aiH[i],-1)}</div></div>`).join('')}
+      <button class="btn green" onclick="gamePoker()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  function pkDrawRender(){
+    openModal(`
+      <h2>♠ POKER — DRAW PHASE</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span> | POT: <span style="color:#ffd700">\${pot}</span></div>
+      <div style="margin:8px 0">Check cards to DISCARD, then click Draw:</div>
+      <div class="card-row">\${ph.map((c,i)=>`<div style="text-align:center">\${cardHTML(c,false)}<br><label style="font-size:6px"><input type="checkbox" class="pk-discard"> Discard</label></div>`).join('')}</div>
+      <br><button class="btn green" onclick="_pkDraw()">DRAW CARDS</button>
+      <button class="btn gray" onclick="closeModal()">FOLD & LEAVE</button>
+    `);
+  }
+  openModal(`
+    <h2>♠ POKER (5-Card Draw)</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="margin:8px 0;color:#aaa">Playing vs: \${AI.join(', ')}</div>
+    <div>BET: <input type="number" id="pk-bet" value="\${bet}" min="1" max="\${playerChips}"> chips</div><br>
+    <button class="btn green" onclick="_pkDeal()">DEAL</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+// CRAPS
+// ══════════════════════════════════════════════
+function gameCraps(){
+  let point=null,phase='comeout';
+  const DICE=['','⚀','⚁','⚂','⚃','⚄','⚅'];
+  window._crapsRoll=function(){
+    const bet=parseInt(document.getElementById('craps-bet').value)||20;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    const d1=Math.ceil(Math.random()*6),d2=Math.ceil(Math.random()*6),sum=d1+d2;
+    playerChips-=bet;
+    let won=0,msg='',col='#e74c3c';
+    if(phase==='comeout'){
+      if([7,11].includes(sum)){won=bet*2;msg=`🎉 Natural \${sum}! WIN!`;col='#2ecc71';phase='comeout';point=null;}
+      else if([2,3,12].includes(sum)){msg=`💥 Craps \${sum}! Lose.`;phase='comeout';point=null;}
+      else{point=sum;phase='point';playerChips+=bet;msg=`Point is set to \${sum}! Roll again!`;col='#ffd700';}
+    } else {
+      if(sum===point){won=bet*2;msg=`🎉 Made the point (\${sum})! WIN!`;col='#2ecc71';phase='comeout';point=null;}
+      else if(sum===7){msg=`💥 Seven out! Lose.`;phase='comeout';point=null;}
+      else{playerChips+=bet;msg=`Rolled \${sum}. Point still \${point}. Keep rolling!`;col='#ffd700';}
+    }
+    playerChips+=won;
+    crapsRender(d1,d2,msg,col,bet);
+  };
+  function crapsRender(d1,d2,msg,col,bet){
+    openModal(`
+      <h2>🎲 CRAPS</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="margin:6px 0">\${point?`<span style="color:#ffd700">POINT: \${point}</span>`:'Come-out Roll'}</div>
+      <div style="font-size:52px;margin:10px 0">\${DICE[d1||1]} \${DICE[d2||1]}</div>
+      <div style="color:\${col||'#fff'};margin:8px 0">\${msg||'Place your bet and roll!'}</div>
+      <div>BET: <input type="number" id="craps-bet" value="\${bet||20}" min="1" max="\${playerChips}"> chips</div><br>
+      <button class="btn green" onclick="_crapsRoll()">🎲 ROLL!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  crapsRender(0,0,'','',20);
+}
+
+// ══════════════════════════════════════════════
+// BACCARAT
+// ══════════════════════════════════════════════
+function gameBaccarat(){
+  window._bacDeal=function(){
+    const bet=parseInt(document.getElementById('bac-bet').value)||20;
+    const side=document.querySelector('input[name="bac-side"]:checked')?.value||'player';
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    playerChips-=bet;
+    const deck=makeDeck();
+    const bv=c=>Math.min(cardNum(c.r),10)%10;
+    const ph=[deck.pop(),deck.pop()],bh=[deck.pop(),deck.pop()];
+    let pv=(bv(ph[0])+bv(ph[1]))%10,bval=(bv(bh[0])+bv(bh[1]))%10;
+    if(pv<=5){ph.push(deck.pop());pv=(pv+bv(ph[2]))%10;}
+    if(bval<=5){bh.push(deck.pop());bval=(bval+bv(bh[2]))%10;}
+    const result=pv>bval?'player':bval>pv?'banker':'tie';
+    let won=0;
+    if(side===result)won=side==='tie'?bet*9:side==='banker'?Math.floor(bet*1.95):bet*2;
+    playerChips+=won;
+    openModal(`
+      <h2>🀄 BACCARAT</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div><b>Player (\${pv}):</b><div class="card-row">\${handsHTML(ph,-1)}</div></div>
+      <div><b>Banker (\${bval}):</b><div class="card-row">\${handsHTML(bh,-1)}</div></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${result.toUpperCase()} wins! \${won>0?'You win +'+won+' chips!':'You lose.'}</div>
+      <button class="btn green" onclick="gameBaccarat()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  openModal(`
+    <h2>🀄 BACCARAT</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="margin:8px 0">Bet on:</div>
+    <label><input type="radio" name="bac-side" value="player" checked> Player (1:1)</label><br>
+    <label><input type="radio" name="bac-side" value="banker"> Banker (0.95:1)</label><br>
+    <label><input type="radio" name="bac-side" value="tie"> Tie (8:1)</label><br><br>
+    <div>BET: <input type="number" id="bac-bet" value="20" min="1" max="\${playerChips}"> chips</div><br>
+    <button class="btn green" onclick="_bacDeal()">DEAL</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+// KENO
+// ══════════════════════════════════════════════
+function gameKeno(){
+  let picked=new Set();
+  window._kenoToggle=function(n){
+    if(picked.has(n))picked.delete(n);
+    else if(picked.size<10)picked.add(n);
+    kenoRender();
+  };
+  window._kenoPlay=function(){
+    const bet=parseInt(document.getElementById('keno-bet').value)||10;
+    if(bet>playerChips){alert('Not enough chips!');return;}
+    if(!picked.size){alert('Pick at least 1 number!');return;}
+    playerChips-=bet;
+    const drawn=new Set();
+    while(drawn.size<20)drawn.add(Math.ceil(Math.random()*80));
+    const matches=[...picked].filter(n=>drawn.has(n)).length;
+    const PAY=[0,1,2,3,5,8,12,20,40,80,200];
+    const won=bet*PAY[Math.min(matches,10)];
+    playerChips+=won;
+    const nums=Array.from({length:80},(_,i)=>i+1);
+    openModal(`
+      <h2>🔢 KENO — RESULTS</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${matches} match\${matches!==1?'es':''}! \${won>0?'+'+won+' chips!':'No win.'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;max-width:440px">
+        \${nums.map(n=>`<div style="width:22px;height:22px;font-size:5px;display:flex;align-items:center;justify-content:center;
+          background:\${drawn.has(n)&&picked.has(n)?'#2ecc71':drawn.has(n)?'#c0392b':picked.has(n)?'#2980b9':'#1a1a2e'};
+          border:1px solid #333;cursor:default">\${n}</div>`).join('')}
+      </div>
+      <div style="margin:6px 0;font-size:6px">🟢 Match &nbsp; 🔴 Drawn &nbsp; 🔵 Your pick</div>
+      <button class="btn green" onclick="gameKeno()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  function kenoRender(){
+    const nums=Array.from({length:80},(_,i)=>i+1);
+    openModal(`
+      <h2>🔢 KENO</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="margin:6px 0">Pick up to 10 numbers (<span style="color:#ffd700">\${picked.size}/10</span>):</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;max-width:440px">
+        \${nums.map(n=>`<div onclick="_kenoToggle(\${n})" style="width:22px;height:22px;font-size:5px;display:flex;align-items:center;justify-content:center;
+          background:\${picked.has(n)?'#ffd700':'#1a1a2e'};color:\${picked.has(n)?'#000':'#fff'};
+          border:1px solid #444;cursor:pointer">\${n}</div>`).join('')}
+      </div>
+      <div style="margin:8px 0">BET: <input type="number" id="keno-bet" value="10" min="1" max="\${playerChips}"> chips</div>
+      <button class="btn green" onclick="_kenoPlay()">PLAY!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  kenoRender();
+}
+
+// ══════════════════════════════════════════════
+// BAR
+// ══════════════════════════════════════════════
+function gameBar(){
+  const DRINKS=[
+    {n:'🍺 Beer',       c:5,  b:0,   m:'Refreshing! Nothing happens.'},
+    {n:'🍷 Wine',       c:10, b:50,  m:'Smooth. You feel lucky! (+50 chips)'},
+    {n:'🥃 Whiskey',   c:15, b:-20, m:'Strong! Head spins... (-20 chips)'},
+    {n:'🍹 Cocktail',  c:20, b:100, m:'Delicious! Lucky streak! (+100 chips)'},
+    {n:'☕ Coffee',     c:5,  b:0,   m:'Sharp focus. Nothing happens.'},
+    {n:'💊 Energy Shot',c:25, b:200, m:'MEGA ENERGY! (+200 chips!)'},
+  ];
+  window._buyDrink=function(i){
+    const d=DRINKS[i];
+    if(playerChips<d.c){document.getElementById('bar-msg').textContent='Not enough chips!';return;}
+    playerChips-=d.c;
+    playerChips=Math.max(0,playerChips+d.b);
+    document.getElementById('bar-msg').textContent=d.m;
+    document.getElementById('bar-msg').style.color=d.b>0?'#2ecc71':d.b<0?'#e74c3c':'#aaa';
+    updateChipsHUD();
+  };
+  openModal(`
+    <h2>🍺 THE LUCKY BAR</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="margin:8px 0;color:#aaa">What'll it be, stranger?</div>
+    \${DRINKS.map((d,i)=>`<div style="margin:4px 0"><button class="btn" onclick="_buyDrink(\${i})">\${d.n}</button> <span style="color:#ffd700">\${d.c} chips</span></div>`).join('')}
+    <div id="bar-msg" style="margin:10px 0;min-height:16px"></div>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+// GAME LOOP
+// ══════════════════════════════════════════════
+let lastTime=0;
+function loop(ts){
+  const dt=Math.min(ts-lastTime,50);
+  lastTime=ts;
+
+  if(!overlay.classList.contains('active')){
+    // Move player
+    let dx=0,dy=0;
+    if(keys['ArrowLeft']||keys['a']||keys['A'])dx=-1;
+    if(keys['ArrowRight']||keys['d']||keys['D'])dx=1;
+    if(keys['ArrowUp']||keys['w']||keys['W'])dy=-1;
+    if(keys['ArrowDown']||keys['s']||keys['S'])dy=1;
+    if(dx!==0&&dy!==0){dx*=0.707;dy*=0.707;}
+    const spd=player.speed;
+    if(dx!==0){const nx=player.x+dx*spd;if(canMove(nx,player.y,player.w,player.h))player.x=nx;}
+    if(dy!==0){const ny=player.y+dy*spd;if(canMove(player.x,ny,player.w,player.h))player.y=ny;}
+    if(dx!==0||dy!==0){
+      player.frameTimer+=dt;
+      if(player.frameTimer>160){player.frame=(player.frame+1)%4;player.frameTimer=0;}
+      if(dx>0)player.dir=1;else if(dx<0)player.dir=3;else if(dy>0)player.dir=2;else player.dir=0;
+    }
+    // NPCs
+    NPCS.forEach(n=>updateNPC(n,dt));
+    // Camera
