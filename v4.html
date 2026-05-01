@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8-Bit Top-Down Casino</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#fff; font-family:'Courier New',monospace; overflow:hidden; }
+canvas { display:block; width:100vw; height:100vh; image-rendering:pixelated; image-rendering:-moz-crisp-edges; image-rendering:crisp-edges; }
+#hud {
+  position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.8); padding:10px; border:2px solid #0ff; font-size:11px; line-height:1.4;
+  pointer-events:none; z-index:10;
+}
+#hud span { color:#ff0; }
+#hint {
+  position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.9); border:2px solid #0ff; padding:8px 16px; font-size:10px;
+  pointer-events:none; z-index:10; opacity:0; transition:opacity 0.3s;
+}
+#hint.show { opacity:1; color:#0ff; }
+#modal {
+  position:absolute; inset:0; background:rgba(0,0,0,0.95); color:#fff; display:none; z-index:20;
+  align-items:center; justify-content:center; padding:20px; font-size:10px; line-height:1.6;
+}
+#modal.show { display:flex; }
+#mbox { background:#111; border:3px solid #ff0; padding:25px; max-width:600px; max-height:80vh; overflow-y:auto; }
+.btn { padding:8px 16px; margin:4px; background:#ff0; color:#000; border:none; cursor:pointer; font-family:inherit; font-size:9px; font-weight:bold; }
+.btn:hover { background:#fff; }
+.btn.danger { background:#f44; color:#fff; }
+.btn.safe { background:#4f4; color:#000; }
+input { background:#222; border:2px solid #ff0; color:#ff0; padding:6px; font-family:inherit; font-size:9px; width:70px; }
+.cards { display:flex; gap:4px; margin:10px 0; flex-wrap:wrap; }
+.card { width:30px; height:42px; background:#fff; color:#000; border:2px solid #000; display:flex; align-items:center; justify-content:center; font-weight:bold; }
+.card.red { color:#c00; }
+.card.back { background:#00a; color:#00a; }
+.reels { display:flex; gap:8px; justify-content:center; margin:10px 0; }
+.reel { width:50px; height:50px; background:#222; border:3px solid #ff0; display:flex; align-items:center; justify-content:center; font-size:24px; }
+.knumbers { display:grid; grid-template-columns:repeat(10,1fr); gap:2px; max-width:300px; margin:10px 0; }
+.kbtn { width:28px; height:28px; background:#222; border:1px solid #666; color:#fff; font-size:8px; cursor:pointer; }
+.kbtn.picked { background:#ff0; color:#000; }
+.kbtn.hit { background:#f90; color:#000; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  💰 Chips: <span id="chipcount">1000</span><br>
+  WASD/Arrows: Move | ENTER: Play near table
+</div>
+<div id="hint">Press ENTER to play!</div>
+<div id="modal">
+  <div id="mbox"></div>
+</div>
+<script>
+// ========== SETUP ==========
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const hudChips = document.getElementById('chipcount');
+const hint = document.getElementById('hint');
+const modal = document.getElementById('modal');
+const mbox = document.getElementById('mbox');
+
+let chips = 1000;
+let keys = {};
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  e.preventDefault();
+});
+document.addEventListener('keyup', e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+// ========== CONSTANTS ==========
+const TILE = 32;
+const MAP_W = 40;
+const MAP_H = 30;
+const player = { x: 15 * TILE, y: 15 * TILE, vx: 0, vy: 0, speed: 3 };
+
+const map = [];
+for (let y = 0; y < MAP_H; y++) {
+  map[y] = [];
+  for (let x = 0; x < MAP_W; x++) {
+    if (x === 0 || x === MAP_W - 1 || y === 0 || y === MAP_H - 1) map[y][x] = 1; // walls
+    else map[y][x] = 0; // floor
+  }
+}
+
+// Add room dividers
+for (let x = 5; x < 15; x++) map[10][x] = 1;
+for (let x = 25; x < 35; x++) map[10][x] = 1;
+for (let y = 5; y < 15; y++) map[y][20] = 1;
+
+// Table positions (x, y, id, name, color)
+const tables = [
+  {x:8, y:3, id:'slots', name:'🎰 Slots', color:'#800080'},
+  {x:8, y:6, id:'roulette', name:'🎡 Roulette', color:'#800000'},
+  {x:8, y:13, id:'blackjack', name:'🃏 Blackjack', color:'#008000'},
+  {x:27, y:3, id:'poker', name:'♠ Poker', color:'#000080'},
+  {x:27, y:6, id:'craps', name:'🎲 Craps', color:'#a52a2a'},
+  {x:27, y:13, id:'keno', name:'🔢 Keno', color:'#008080'},
+  {x:18, y:13, id:'bar', name:'🍺 Bar', color:'#8b4513'}
+];
+
+const npcs = [];
+for (let i = 0; i < 8; i++) {
+  npcs.push({
+    x: Math.random() * (MAP_W - 4) * TILE + 2 * TILE,
+    y: Math.random() * (MAP_H - 4) * TILE + 2 * TILE,
+    vx: 0, vy: 0, speed: 1.5, dir: Math.random() * 4 | 0, timer: 0
+  });
+}
+
+// ========== UPDATE ==========
+function update(dt) {
+  // Player movement
+  player.vx = 0;
+  player.vy = 0;
+  if (keys['w'] || keys['arrowup']) player.vy = -player.speed;
+  if (keys['s'] || keys['arrowdown']) player.vy = player.speed;
+  if (keys['a'] || keys['arrowleft']) player.vx = -player.speed;
+  if (keys['d'] || keys['arrowright']) player.vx = player.speed;
+
+  // Collision
+  const newX = player.x + player.vx * dt * 60;
+  const newY = player.y + player.vy * dt * 60;
+  if (!collides(newX, player.y)) player.x = newX;
+  if (!collides(player.x, newY)) player.y = newY;
+
+  // Camera
+  ctx.save();
+  const camX = player.x - canvas.width / 2;
+  const camY = player.y - canvas.height / 2;
+  ctx.translate(-camX, -camY);
+
+  // NPCs
+  npcs.forEach(npc => {
+    npc.timer += dt * 60;
+    if (npc.timer > 120) {
+      npc.vx = (Math.random() - 0.5) * npc.speed * 2;
+      npc.vy = (Math.random() - 0.5) * npc.speed * 2;
+      npc.timer = 0;
+    }
+    const nx = npc.x + npc.vx * dt * 60;
+    const ny = npc.y + npc.vy * dt * 60;
+    if (!collides(nx, npc.y)) npc.x = nx;
+    if (!collides(npc.x, ny)) npc.y = ny;
+  });
+
+  // Hint
+  const near = getNearTable();
+  hint.classList.toggle('show', near);
+
+  ctx.restore();
+}
+
+function collides(x, y) {
+  const tx = Math.floor(x / TILE);
+  const ty = Math.floor(y / TILE);
+  if (tx < 1 || tx >= MAP_W - 1 || ty < 1 || ty >= MAP_H - 1) return true;
+  return map[ty][tx] === 1;
+}
+
+function getNearTable() {
+  const px = player.x / TILE;
+  const py = player.y / TILE;
+  for (let table of tables) {
+    if (px > table.x - 2 && px < table.x + 3 && py > table.y - 2 && py < table.y + 3) {
+      return table;
+    }
+  }
+  return null;
+}
+
+// ========== RENDER ==========
+function render() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  const camX = player.x - canvas.width / 2;
+  const camY = player.y - canvas.height / 2;
+  ctx.translate(-camX, -camY);
+
+  // Map
+  const startX = Math.max(0, Math.floor(camX / TILE) - 1);
+  const endX = Math.min(MAP_W, Math.ceil((camX + canvas.width) / TILE) + 1);
+  const startY = Math.max(0, Math.floor(camY / TILE) - 1);
+  const endY = Math.min(MAP_H, Math.ceil((camY + canvas.height) / TILE) + 1);
+
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX;
