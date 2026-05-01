@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>8-Bit Casino</title>
+<!-- ADSENSE PUBLISHER ID — replace below -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-YOUR_ID" crossorigin="anonymous"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#111; overflow:hidden; font-family:monospace; }
+
+#topbar {
+  width:100%; height:52px; background:#000;
+  border-bottom:3px solid #ffd700;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:#555;
+}
+#wrap { display:flex; width:100vw; height:calc(100vh - 52px); }
+#sidebar {
+  width:130px; background:#0a0a0a;
+  border-right:3px solid #ffd700;
+  display:flex; flex-direction:column;
+  align-items:center; padding:10px 4px; gap:8px;
+  font-size:7px; color:#444;
+}
+#main { flex:1; position:relative; overflow:hidden; }
+canvas#c { display:block; background:#1a0a2e; }
+
+#hud {
+  position:absolute; top:8px; left:8px;
+  background:rgba(0,0,0,0.9); border:2px solid #ffd700;
+  padding:8px 12px; font-size:9px; line-height:2.2;
+  color:#fff; pointer-events:none; z-index:5;
+  font-family:'Courier New',monospace;
+}
+#hud b { color:#ffd700; }
+
+#hint {
+  position:absolute; bottom:14px; left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.95); border:2px solid #ffd700;
+  padding:7px 18px; font-size:9px; color:#ffd700;
+  font-family:'Courier New',monospace;
+  pointer-events:none; z-index:5;
+  display:none;
+}
+
+#mmap {
+  position:absolute; top:8px; right:8px;
+  border:2px solid #ffd700; z-index:5;
+  image-rendering:pixelated;
+}
+
+/* MODAL */
+#ov {
+  display:none; position:absolute; inset:0;
+  background:rgba(0,0,0,0.92); z-index:50;
+  align-items:center; justify-content:center;
+}
+#ov.on { display:flex; }
+#mbox {
+  background:#0d0020; border:3px solid #ffd700;
+  padding:22px; width:92%; max-width:560px;
+  max-height:88vh; overflow-y:auto;
+  font-family:'Courier New',monospace;
+  font-size:9px; line-height:2; color:#eee;
+}
+#mbox h2 { color:#ffd700; font-size:13px; margin-bottom:12px; font-family:monospace; }
+.btn {
+  display:inline-block; padding:8px 14px; margin:3px;
+  background:#ffd700; color:#000; border:none; cursor:pointer;
+  font-family:monospace; font-size:8px; font-weight:bold;
+}
+.btn:hover { background:#ffe84d; }
+.btn.g { background:#00cc44; color:#000; }
+.btn.g:hover { background:#00ff55; }
+.btn.r { background:#cc2200; color:#fff; }
+.btn.r:hover { background:#ff3300; }
+.btn.b { background:#0066cc; color:#fff; }
+.btn.b:hover { background:#0088ff; }
+.btn.x { background:#444; color:#fff; }
+.btn.x:hover { background:#666; }
+input[type=number] {
+  background:#111; border:2px solid #ffd700;
+  color:#ffd700; padding:5px 7px;
+  font-family:monospace; font-size:9px; width:85px;
+}
+.cards { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+.card {
+  width:38px; height:54px; background:#fff; color:#000;
+  border:2px solid #333; border-radius:4px;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  font-size:10px; font-weight:bold; font-family:monospace;
+}
+.card.red { color:#cc0000; }
+.card.back { background:#000080; color:#000080; }
+.reels { display:flex; gap:10px; justify-content:center; margin:12px 0; }
+.reel {
+  width:66px; height:66px; background:#111;
+  border:3px solid #ffd700; display:flex;
+  align-items:center; justify-content:center; font-size:34px;
+}
+.kgrid { display:flex; flex-wrap:wrap; gap:2px; max-width:460px; margin:8px 0; }
+.knum {
+  width:24px; height:24px; font-size:6px;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid #333; cursor:pointer; font-family:monospace;
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <!-- TOP BANNER AD -->
+  <ins class="adsbygoogle"
+    style="display:inline-block;width:728px;height:50px"
+    data-ad-client="ca-pub-YOUR_ID"
+    data-ad-slot="YOUR_AD_SLOT_ID_1"></ins>
+  <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>
+</div>
+
+<div id="wrap">
+  <div id="sidebar">
+    <div>ADS</div>
+    <!-- SIDEBAR AD -->
+    <ins class="adsbygoogle"
+      style="display:inline-block;width:120px;height:240px"
+      data-ad-client="ca-pub-YOUR_ID"
+      data-ad-slot="YOUR_AD_SLOT_ID_2"></ins>
+    <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>
+  </div>
+
+  <div id="main">
+    <canvas id="c"></canvas>
+    <canvas id="mmap" width="108" height="80"></canvas>
+    <div id="hud">
+      💰 CHIPS: <b id="chips">1000</b><br>
+      🕹 WASD = Move<br>
+      ⏎ ENTER = Play
+    </div>
+    <div id="hint">⏎ ENTER to Play!</div>
+    <div id="ov"><div id="mbox"></div></div>
+  </div>
+</div>
+
+<script>
+// =============================================
+//  GLOBALS
+// =============================================
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+const mm = document.getElementById('mmap');
+const mx = mm.getContext('2d');
+const mainDiv = document.getElementById('main');
+
+let W, H;
+function resize() {
+  W = mainDiv.clientWidth;
+  H = mainDiv.clientHeight;
+  cv.width = W;
+  cv.height = H;
+}
+resize();
+window.addEventListener('resize', resize);
+
+let chips = 1000;
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+document.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+// =============================================
+//  MAP  0=carpet  1=wall  2=dark-floor
+// =============================================
+const TW = 48, TC = 28, TR = 22;
+const MAP = [];
+for (let r = 0; r < TR; r++) {
+  MAP[r] = [];
+  for (let c = 0; c < TC; c++) {
+    MAP[r][c] = (r===0||r===TR-1||c===0||c===TC-1) ? 1 : 0;
+  }
+}
+// divider walls with doors
+for (let c = 0; c < TC; c++) if (c!==7 && c!==20) MAP[10][c] = 1;
+for (let r = 0; r < TR; r++) if (r!==5 && r!==15) MAP[r][14] = 1;
+
+// dark floor on right side
+for (let r=1;r<10;r++) for(let c=15;c<TC-1;c++) if(MAP[r][c]===0) MAP[r][c]=2;
+for (let r=11;r<TR-1;r++) for(let c=15;c<TC-1;c++) if(MAP[r][c]===0) MAP[r][c]=2;
+
+// =============================================
+//  TABLES
+// =============================================
+const TABLES = [
+  { id:'blackjack', name:'BLACKJACK', icon:'🃏', tx:1,  ty:1,  tw:6, th:4, col:'#0a5c36' },
+  { id:'baccarat',  name:'BACCARAT',  icon:'🀄', tx:1,  ty:6,  tw:6, th:3, col:'#5a0080' },
+  { id:'poker',     name:'POKER',     icon:'♠',  tx:1,  ty:11, tw:6, th:5, col:'#003a7a' },
+  { id:'roulette',  name:'ROULETTE',  icon:'🎡', tx:15, ty:1,  tw:7, th:4, col:'#7a0000' },
+  { id:'slots',     name:'SLOTS',     icon:'🎰', tx:23, ty:1,  tw:4, th:8, col:'#3a006a' },
+  { id:'craps',     name:'CRAPS',     icon:'🎲', tx:15, ty:11, tw:7, th:5, col:'#6a3000' },
+  { id:'keno',      name:'KENO',      icon:'🔢', tx:23, ty:11, tw:4, th:5, col:'#004a4a' },
+  { id:'bar',       name:'BAR',       icon:'🍺', tx:8,  ty:12, tw:5, th:4, col:'#3a1500' },
+];
+
+// =============================================
+//  PLAYER
+// =============================================
+const P = { x:8*TW, y:14*TW, w:24, h:32, spd:3.2, dir:2, fr:0, ft:0 };
+
+function solid(wx, wy, pw, ph) {
+  const pts = [[wx+3,wy+ph-3],[wx+pw-3,wy+ph-3],[wx+3,wy+6],[wx+pw-3,wy+6]];
+  for (const [px,py] of pts) {
+    const tc = Math.floor(px/TW), tr = Math.floor(py/TW);
+    if (tr<0||tr>=TR||tc<0||tc>=TC) return true;
+    if (MAP[tr][tc]===1) return true;
+  }
+  return false;
+}
+
+// =============================================
+//  NPCs
+// =============================================
+const NCOLORS = ['#e74c3c','#3498db','#27ae60','#f39c12','#9b59b6','#1abc9c','#e91e63','#ff5722'];
+const NNAMES  = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Hank'];
+const NPCS = NNAMES.map((name,i) => ({
+  name, col:NCOLORS[i],
+  x:(2+i*3)*TW, y:(2+(i%3)*5)*TW,
+  dir:i%4, fr:0, ft:0, mt:0, dx:0, dy:0
+}));
+
+function npcUpdate(n, dt) {
+  n.mt -= dt;
+  if (n.mt <= 0) {
+    n.mt = 1000 + Math.random()*2000;
+    const opts = [[1,0],[-1,0],[0,1],[0,-1],[0,0],[0,0]];
+    const d = opts[Math.floor(Math.random()*opts.length)];
+    n.dx=d[0]; n.dy=d[1];
+    if(d[0]>0) n.dir=1; else if(d[0]<0) n.dir=3;
+    else if(d[1]>0) n.dir=2; else if(d[1]<0) n.dir=0;
+  }
+  const s=1.4;
+  if(!solid(n.x+n.dx*s,n.y,20,28)) n.x+=n.dx*s;
+  if(!solid(n.x,n.y+n.dy*s,20,28)) n.y+=n.dy*s;
+  n.ft+=dt;
+  if(n.ft>190){n.fr=(n.fr+1)%4;n.ft=0;}
+}
+
+// =============================================
+//  CAMERA
+// =============================================
+let camX=0, camY=0;
+function camUpdate() {
+  const tx = P.x+P.w/2-W/2;
+  const ty = P.y+P.h/2-H/2;
+  const maxX = TC*TW-W, maxY = TR*TW-H;
+  camX += (tx-camX)*0.13;
+  camY += (ty-camY)*0.13;
+  camX = Math.max(0,Math.min(Math.max(0,maxX),camX));
+  camY = Math.max(0,Math.min(Math.max(0,maxY),camY));
+}
+
+// =============================================
+//  DRAW
+// =============================================
+function drawScene() {
+  cx.clearRect(0,0,W,H);
+
+  // --- floor tiles ---
+  const c0=Math.max(0,Math.floor(camX/TW)-1);
+  const c1=Math.min(TC,Math.ceil((camX+W)/TW)+1);
+  const r0=Math.max(0,Math.floor(camY/TW)-1);
+  const r1=Math.min(TR,Math.ceil((camY+H)/TW)+1);
+
+  for (let r=r0;r<r1;r++) {
+    for (let c=c0;c<c1;c++) {
+      const sx=c*TW-camX, sy=r*TW-camY;
+      const t=MAP[r][c];
+      if (t===1) {
+        cx.fillStyle='#0d2a5e';
+        cx.fillRect(sx,sy,TW,TW);
+        cx.fillStyle='#e94560';
+        cx.fillRect(sx,sy,TW,6);
+      } else if (t===0) {
+        cx.fillStyle=(r+c)%2===0?'#2a0845':'#350a58';
+        cx.fillRect(sx,sy,TW,TW);
+      } else {
+        cx.fillStyle=(r+c)%2===0?'#080014':'#0d001e';
+        cx.fillRect(sx,sy,TW,TW);
+      }
+    }
+  }
+
+  // --- blinking ceiling lights ---
+  const tick = Math.floor(Date.now()/400);
+  for (let c=2;c<TC-1;c+=4) {
+    const on = (tick+c)%3!==0;
+    cx.fillStyle = on ? `hsl(\${(c*45)%360},100%,65%)` : '#222';
+    cx.fillRect(c*TW-camX+18, TW-camY+2, 12, 8);
+  }
+
+  // --- tables ---
+  for (const t of TABLES) {
+    const sx=t.tx*TW-camX, sy=t.ty*TW-camY;
+    const tw=t.tw*TW, th=t.th*TW;
+    // shadow
+    cx.fillStyle='rgba(0,0,0,0.5)';
+    cx.fillRect(sx+5,sy+5,tw,th);
+    // body
+    cx.fillStyle=t.col;
+    cx.fillRect(sx,sy,tw,th);
+    // felt inset
+    cx.fillStyle='rgba(0,0,0,0.28)';
+    cx.fillRect(sx+5,sy+5,tw-10,th-10);
+    // border
+    cx.strokeStyle='#ffd700';
+    cx.lineWidth=3;
+    cx.strokeRect(sx+1,sy+1,tw-2,th-2);
+    // label
+    cx.fillStyle='#ffd700';
+    cx.font='bold 9px monospace';
+    cx.textAlign='center';
+    cx.fillText(t.icon+' '+t.name, sx+tw/2, sy+th/2-4);
+    cx.font='7px monospace';
+    cx.fillStyle='rgba(255,215,0,0.6)';
+    cx.fillText('[ENTER]', sx+tw/2, sy+th/2+12);
+    cx.textAlign='left';
+  }
+
+  // --- NPCs ---
+  for (const n of NPCS) drawSprite(n.x,n.y,n.col,n.dir,n.fr,n.name);
+
+  // --- player ---
+  drawSprite(P.x,P.y,'#ffd700',P.dir,P.fr,'YOU');
+}
+
+function drawSprite(wx,wy,col,dir,fr,label) {
+  const sx=wx-camX, sy=wy-camY;
+  const W2=24, H2=32;
+  // shadow
+  cx.fillStyle='rgba(0,0,0,0.35)';
+  cx.beginPath();
+  cx.ellipse(sx+W2/2,sy+H2+3,W2/2,5,0,0,Math.PI*2);
+  cx.fill();
+  // legs
+  cx.fillStyle='#222';
+  const lb = (fr%2===0)?2:-2;
+  cx.fillRect(sx+3,   sy+H2*0.72+lb, 8, H2*0.28);
+  cx.fillRect(sx+W2-11,sy+H2*0.72-lb, 8, H2*0.28);
+  // body
+  cx.fillStyle=col;
+  cx.fillRect(sx+2,sy+H2*0.38,W2-4,H2*0.38);
+  // arms
+  const ab=(fr%2===0)?-2:2;
+  cx.fillRect(sx-4,sy+H2*0.4+ab,5,H2*0.24);
+  cx.fillRect(sx+W2-1,sy+H2*0.4-ab,5,H2*0.24);
+  // head
+  cx.fillStyle='#f5cba7';
+  cx.fillRect(sx+4,sy+2,W2-8,H2*0.36);
+  // eyes
+  cx.fillStyle='#000';
+  if(dir===2){cx.fillRect(sx+7,sy+8,3,3);cx.fillRect(sx+W2-10,sy+8,3,3);}
+  else if(dir===0){cx.fillRect(sx+7,sy+6,3,3);cx.fillRect(sx+W2-10,sy+6,3,3);}
+  else if(dir===1){cx.fillRect(sx+W2-8,sy+8,3,3);}
+  else{cx.fillRect(sx+5,sy+8,3,3);}
+  // nametag
+  if(label){
+    cx.font='6px monospace';
+    const tw2=cx.measureText(label).width+8;
+    cx.fillStyle='rgba(0,0,0,0.8)';
+    cx.fillRect(sx+W2/2-tw2/2,sy-14,tw2,12);
+    cx.fillStyle='#ffd700';
+    cx.textAlign='center';
+    cx.fillText(label,sx+W2/2,sy-4);
+    cx.textAlign='left';
+  }
+}
+
+function drawMinimap() {
+  const SW=108/TC, SH=80/TR;
+  mx.fillStyle='#000';
+  mx.fillRect(0,0,108,80);
+  for(let r=0;r<TR;r++) for(let c=0;c<TC;c++) {
+    if(MAP[r][c]===1){mx.fillStyle='#0d2a5e';mx.fillRect(c*SW,r*SH,SW,SH);}
+  }
+  for(const t of TABLES){
+    mx.fillStyle=t.col;
+    mx.fillRect(t.tx*SW,t.ty*SH,t.tw*SW,t.th*SH);
+  }
+  for(const n of NPCS){
+    mx.fillStyle=n.col;
+    mx.fillRect(n.x/TW*SW,n.y/TW*SH,3,3);
+  }
+  mx.fillStyle='#ffd700';
+  mx.fillRect(P.x/TW*SW-2,P.y/TW*SH-2,5,5);
+}
+
+// =============================================
+//  NEAR TABLE
+// =============================================
+function nearTable() {
+  const px=P.x/TW, py=P.y/TW;
+  for(const t of TABLES){
+    if(px>t.tx-1.5&&px<t.tx+t.tw+0.5&&py>t.ty-1.5&&py<t.ty+t.th+0.5) return t;
+  }
+  return null;
+}
+
+// =============================================
+//  MODAL
+// =============================================
+const ov = document.getElementById('ov');
+const mb = document.getElementById('mbox');
+function show(html){ mb.innerHTML=html; ov.classList.add('on'); }
+function hide(){ ov.classList.remove('on'); }
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') hide();
+  if(e.key==='Enter' && !ov.classList.contains('on')){
+    const t=nearTable(); if(t) launch(t);
+  }
+});
+
+function updChips(){
+  document.getElementById('chips').textContent=chips;
+  const el=document.getElementById('mc'); if(el) el.textContent=chips;
+}
+
+// =============================================
+//  CARD HELPERS
+// =============================================
+function mkDeck(){
+  const S=['♠','♥','♦','♣'],R=['A','2','3','4','5','6','7','8','9','10','J','Q','K'],d=[];
+  for(const s of S) for(const r of R) d.push({s,r});
+  for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}
+  return d;
+}
+function cval(r){if(['J','Q','K'].includes(r))return 10;if(
