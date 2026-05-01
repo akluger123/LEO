@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>8-Bit Casino</title>
+
+<!-- ============================================================
+     GOOGLE ADSENSE — Replace with your publisher ID
+     ============================================================ -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-YOUR_ADSENSE_PUBLISHER_ID" crossorigin="anonymous"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a1a; font-family: 'Press Start 2P', monospace; color: #fff; overflow: hidden; }
+
+  /* ---- TOP AD BANNER ---- */
+  #ad-top {
+    width: 100%; height: 60px; background: #111;
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 2px solid #ffd700; font-size: 8px; color: #555;
+  }
+
+  #ui-wrapper { display: flex; width: 100vw; height: calc(100vh - 60px); }
+
+  /* ---- SIDEBAR AD ---- */
+  #ad-sidebar {
+    width: 160px; background: #0d0d1f;
+    border-right: 2px solid #ffd700;
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 10px; gap: 10px; font-size: 7px; color: #555;
+  }
+
+  #game-area { flex: 1; position: relative; overflow: hidden; }
+  canvas { display: block; image-rendering: pixelated; }
+
+  /* ---- HUD ---- */
+  #hud {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(0,0,0,0.8); border: 2px solid #ffd700;
+    padding: 8px 12px; font-size: 9px; line-height: 1.8;
+    pointer-events: none;
+  }
+  #hud span { color: #ffd700; }
+
+  /* ---- MINI MAP ---- */
+  #minimap {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.8); border: 2px solid #ffd700;
+    width: 120px; height: 90px;
+  }
+
+  /* ---- MODAL OVERLAY ---- */
+  #modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.88); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #modal-overlay.active { display: flex; }
+  #modal-box {
+    background: #0d0d2a; border: 3px solid #ffd700;
+    padding: 20px; max-width: 560px; width: 95%;
+    max-height: 90vh; overflow-y: auto;
+    font-size: 9px; line-height: 2;
+  }
+  #modal-box h2 { color: #ffd700; margin-bottom: 12px; font-size: 12px; }
+  .btn {
+    display: inline-block; margin: 4px 2px;
+    padding: 8px 14px; background: #ffd700; color: #000;
+    cursor: pointer; border: none; font-family: 'Press Start 2P', monospace;
+    font-size: 8px; image-rendering: pixelated;
+  }
+  .btn:hover { background: #ffec6e; }
+  .btn.red { background: #e74c3c; color: #fff; }
+  .btn.red:hover { background: #ff6b6b; }
+  .btn.green { background: #2ecc71; color: #000; }
+  .btn.green:hover { background: #58d68d; }
+  .btn.gray { background: #555; color: #fff; }
+  input[type=number], input[type=text] {
+    background: #111; border: 2px solid #ffd700; color: #ffd700;
+    padding: 6px; font-family: 'Press Start 2P', monospace;
+    font-size: 8px; width: 100px; margin: 4px;
+  }
+  .game-log { background: #000; border: 1px solid #333; padding: 8px; margin-top: 8px; height: 120px; overflow-y: auto; font-size: 7px; color: #aaa; }
+  .card-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .card {
+    width: 36px; height: 52px; background: #fff; color: #000;
+    border: 2px solid #000; display: flex; align-items: center;
+    justify-content: center; font-size: 9px; border-radius: 3px;
+    font-family: 'Press Start 2P', monospace;
+  }
+  .card.red-card { color: #e74c3c; }
+  .card.back { background: #1a237e; color: #1a237e; }
+  .roulette-wheel { width: 160px; height: 160px; border-radius: 50%; border: 4px solid #ffd700; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 10px auto; transition: transform 0.8s ease-out; }
+  .slot-reels { display: flex; gap: 8px; justify-content: center; margin: 10px 0; }
+  .reel { width: 60px; height: 60px; background: #111; border: 2px solid #ffd700; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .poker-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .chip { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 7px; cursor: pointer; }
+  .chip:hover { transform: scale(1.1); }
+  #interact-hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.8); border: 2px solid #ffd700;
+    padding: 6px 14px; font-size: 8px; color: #ffd700;
+    pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #interact-hint.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- TOP BANNER AD -->
+<div id="ad-top">
+  <ins class="adsbygoogle"
+       style="display:inline-block;width:728px;height:60px"
+       data-ad-client="ca-pub-YOUR_ADSENSE_PUBLISHER_ID"
+       data-ad-slot="YOUR_AD_SLOT_ID_1"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<div id="ui-wrapper">
+  <!-- SIDEBAR AD -->
+  <div id="ad-sidebar">
+    <div>AD</div>
+    <ins class="adsbygoogle"
+         style="display:inline-block;width:160px;height:600px"
+         data-ad-client="ca-pub-YOUR_ADSENSE_PUBLISHER_ID"
+         data-ad-slot="YOUR_AD_SLOT_ID_2"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </div>
+
+  <div id="game-area">
+    <canvas id="casino-canvas"></canvas>
+    <div id="hud">
+      💰 CHIPS: <span id="hud-chips">1000</span><br>
+      🎮 WASD / ARROWS to move<br>
+      ⏎ ENTER to play
+    </div>
+    <canvas id="minimap"></canvas>
+    <div id="interact-hint">Press ENTER to Play</div>
+    <div id="modal-overlay">
+      <div id="modal-box" id="modal-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CORE ENGINE
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('casino-canvas');
+const ctx = canvas.getContext('2d');
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+mmCanvas.width = 120; mmCanvas.height = 90;
+
+const TILE = 32;
+const COLS = 40, ROWS = 30;
+let playerChips = 1000;
+
+function resizeCanvas() {
+  const area = document.getElementById('game-area');
+  canvas.width = area.clientWidth;
+  canvas.height = area.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── PALETTE ───
+const C = {
+  floor:  '#1a1a2e', floorAlt: '#16213e',
+  wall:   '#0f3460', wallTop: '#e94560',
+  carpet: '#2d0a4e', carpetAlt: '#3d1060',
+  table:  '#0a5c36', tableAlt: '#0d7a48',
+  slot:   '#4a0080', slotAlt: '#6a00b0',
+  roulette: '#8b0000', rouletteAlt: '#a00000',
+  poker:  '#00468b', pokerAlt: '#0056a8',
+  bj:     '#005c3e', bjAlt:   '#007a52',
+  craps:  '#8b4500', crapsAlt:'#a85200',
+  bar:    '#2a0a00', barAlt:  '#3d1500',
+  gold:   '#ffd700', white: '#ffffff', black: '#000000',
+};
+
+// ─── MAP ───
+// 0=floor, 1=wall, 2=carpet, 3=slot area, 4=roulette, 5=blackjack, 6=poker, 7=craps, 8=bar
+const MAP = [];
+for (let r = 0; r < ROWS; r++) {
+  MAP[r] = [];
+  for (let c = 0; c < COLS; c++) {
+    if (r === 0 || r === ROWS-1 || c === 0 || c === COLS-1) { MAP[r][c] = 1; }
+    else MAP[r][c] = 0;
+  }
+}
+// Interior walls / dividers
+function hwall(r, c1, c2) { for(let c=c1;c<=c2;c++) MAP[r][c]=1; }
+function vwall(r1, r2, c) { for(let r=r1;r<=r2;r++) MAP[r][c]=1; }
+hwall(8,  0, 18); MAP[8][9]=0; // top divider
+hwall(8, 22, 39);
+hwall(18, 0, 18); MAP[18][9]=0;
+hwall(18,22,39);
+vwall(0, 8, 20); MAP[4][20]=0;
+vwall(8,18,20); MAP[13][20]=0;
+vwall(18,29,20); MAP[23][20]=0;
+
+// Carpet zones
+for(let r=1;r<8;r++) for(let c=1;c<20;c++) if(MAP[r][c]===0) MAP[r][c]=2;
+for(let r=9;r<18;r++) for(let c=1;c<20;c++) if(MAP[r][c]===0) MAP[r][c]=2;
+for(let r=19;r<29;r++) for(let c=1;c<20;c++) if(MAP[r][c]===0) MAP[r][c]=2;
+for(let r=1;r<8;r++) for(let c=21;c<39;c++) if(MAP[r][c]===0) MAP[r][c]=3;
+for(let r=9;r<18;r++) for(let c=21;c<39;c++) if(MAP[r][c]===0) MAP[r][c]=4;
+for(let r=19;r<29;r++) for(let c=21;c<39;c++) if(MAP[r][c]===0) MAP[r][c]=5;
+
+// ─── GAME TABLES (zones) ───
+const TABLES = [
+  { id:'slots',     name:'🎰 SLOTS',      x:29, y:3,  w:8, h:4, color:'#9b59b6', sign:'SLOTS'     },
+  { id:'roulette',  name:'🎡 ROULETTE',   x:22, y:3,  w:6, h:4, color:'#e74c3c', sign:'ROULETTE'  },
+  { id:'blackjack', name:'🃏 BLACKJACK',  x:5,  y:3,  w:8, h:4, color:'#27ae60', sign:'BLACKJACK' },
+  { id:'poker',     name:'♠ POKER',       x:5,  y:11, w:8, h:5, color:'#2980b9', sign:'POKER'     },
+  { id:'craps',     name:'🎲 CRAPS',      x:22, y:11, w:14,h:5, color:'#e67e22', sign:'CRAPS'     },
+  { id:'baccarat',  name:'🀄 BACCARAT',   x:5,  y:21, w:8, h:5, color:'#8e44ad', sign:'BACCARAT'  },
+  { id:'keno',      name:'🔢 KENO',       x:22, y:21, w:14,h:5, color:'#16a085', sign:'KENO'      },
+  { id:'bar',       name:'🍺 BAR',        x:14, y:21, w:5, h:5, color:'#795548', sign:'BAR'       },
+];
+
+// ─── PLAYER ───
+const player = { x: 10*TILE, y: 14*TILE, w: 20, h: 28, speed: 2.5, dir: 2, frame: 0, frameTimer: 0 };
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+// ─── CAMERA ───
+let camX = 0, camY = 0;
+
+// ─── NPC AI ───
+const NPCS = [
+  { x: 7*TILE, y: 4*TILE,  dir: 1, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#e74c3c', name: 'Alice' },
+  { x:25*TILE, y: 4*TILE,  dir: 3, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#3498db', name: 'Bob'   },
+  { x: 7*TILE, y:13*TILE,  dir: 0, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#2ecc71', name: 'Carol' },
+  { x:28*TILE, y:13*TILE,  dir: 2, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#f39c12', name: 'Dave'  },
+  { x: 7*TILE, y:24*TILE,  dir: 1, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#9b59b6', name: 'Eve'   },
+  { x:28*TILE, y:24*TILE,  dir: 0, frame: 0, timer: 0, moveTimer: 0, dx: 0, dy: 0, color: '#1abc9c', name: 'Frank' },
+];
+
+function updateNPC(npc, dt) {
+  npc.moveTimer -= dt;
+  if (npc.moveTimer <= 0) {
+    npc.moveTimer = 1500 + Math.random()*2000;
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0],[0,0]];
+    const d = dirs[Math.floor(Math.random()*dirs.length)];
+    npc.dx = d[0]; npc.dy = d[1];
+    if (d[0]!==0||d[1]!==0) npc.dir = d[1]<0?0:d[1]>0?2:d[0]<0?3:1;
+  }
+  const spd = 1.2;
+  const nx = npc.x + npc.dx*spd;
+  const ny = npc.y + npc.dy*spd;
+  if (canMove(nx, npc.y, 18, 26)) npc.x = nx;
+  if (canMove(npc.x, ny, 18, 26)) npc.y = ny;
+  npc.timer += dt;
+  if (npc.timer > 200) { npc.frame = (npc.frame+1)%4; npc.timer=0; }
+}
+
+function canMove(wx, wy, pw, ph) {
+  const corners = [
+    [wx+2, wy+ph-2], [wx+pw-2, wy+ph-2],
+    [wx+2, wy+2],    [wx+pw-2, wy+2]
+  ];
+  for (const [cx,cy] of corners) {
+    const tc = Math.floor(cx/TILE), tr = Math.floor(cy/TILE);
+    if (tr<0||tr>=ROWS||tc<0||tc>=COLS) return false;
+    if (MAP[tr][tc]===1) return false;
+  }
+  return true;
+}
+
+// ─── DRAW HELPERS ───
+function drawTile(tx, ty, col, col2) {
+  const x = tx*TILE - camX, y = ty*TILE - camY;
+  ctx.fillStyle = col;
+  ctx.fillRect(x, y, TILE, TILE);
+  if (col2) {
+    ctx.fillStyle = col2;
+    ctx.fillRect(x+1, y+1, TILE-2, 6);
+  }
+}
+
+function drawSprite(wx, wy, color, dir, frame, label, size) {
+  const sx = wx - camX, sy = wy - camY;
+  const w = size||20, h = size ? size*1.4 : 28;
+  // body
+  ctx.fillStyle = color;
+  ctx.fillRect(sx, sy+h*0.35, w, h*0.45);
+  // head
+  ctx.fillStyle = '#f5cba7';
+  ctx.fillRect(sx+w*0.15, sy, w*0.7, h*0.38);
+  // eyes
+  ctx.fillStyle = '#000';
+  const eyeY = sy + h*0.1;
+  if (dir===2||dir===0) {
+    ctx.fillRect(sx+w*0.25, eyeY+h*0.08, 3, 3);
+    ctx.fillRect(sx+w*0.6,  eyeY+h*0.08, 3, 3);
+  }
+  // legs
+  ctx.fillStyle = '#333';
+  const legOff = (frame%2===0)?2:0;
+  ctx.fillRect(sx+2,   sy+h*0.8+legOff, w*0.35, h*0.2);
+  ctx.fillRect(sx+w*0.55, sy+h*0.8-legOff, w*0.35, h*0.2);
+  // name tag
+  if (label) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(sx-10, sy-14, label.length*5+4, 12);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '6px "Press Start 2P"';
+    ctx.fillText(label, sx-8, sy-4);
+  }
+}
+
+function drawTable(t) {
+  const sx = t.x*TILE - camX, sy = t.y*TILE - camY;
+  const tw = t.w*TILE, th = t.h*TILE;
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(sx+4, sy+4, tw, th);
+  // table surface
+  ctx.fillStyle = t.color;
+  ctx.fillRect(sx, sy, tw, th);
+  // felt
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(sx+4, sy+4, tw-8, th-8);
+  // border
+  ctx.strokeStyle = C.gold;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx+1, sy+1, tw-2, th-2);
+  // sign
+  ctx.fillStyle = C.gold;
+  ctx.font = '7px "Press Start 2P"';
+  ctx.textAlign = 'center';
+  ctx.fillText(t.sign, sx+tw/2, sy+th/2+3);
+  ctx.textAlign = 'left';
+}
+
+function drawMap() {
+  const startC = Math.max(0, Math.floor(camX/TILE)-1);
+  const endC   = Math.min(COLS, Math.ceil((camX+canvas.width)/TILE)+1);
+  const startR = Math.max(0, Math.floor(camY/TILE)-1);
+  const endR   = Math.min(ROWS, Math.ceil((camY+canvas.height)/TILE)+1);
+
+  for (let r = startR; r < endR; r++) {
+    for (let c = startC; c < endC; c++) {
+      const t = MAP[r][c];
+      switch(t) {
+        case 0: drawTile(c,r,C.floor, null); break;
+        case 1: drawTile(c,r,C.wall, C.wallTop); break;
+        case 2: {
+          const alt = (r+c)%2===0;
+          drawTile(c,r, alt?C.carpet:C.carpetAlt); break;
+        }
+        case 3: drawTile(c,r, '#1a0033'); break;
+        case 4: drawTile(c,r, '#1a0000'); break;
+        case 5: drawTile(c,r, '#001a0d'); break;
+      }
+    }
+  }
+  // decorative lights along walls
+  for (let c = 2; c < COLS-1; c += 4) {
+    const lx = c*TILE - camX, ly = 0 - camY + TILE;
+    ctx.fillStyle = (Math.floor(Date.now()/400)%2===0)?'#ffd700':'#ff6600';
+    ctx.fillRect(lx, ly, 6, 6);
+  }
+}
+
+function drawMinimap() {
+  mmCtx.fillStyle = '#000';
+  mmCtx.fillRect(0,0,120,90);
+  const sx = 120/COLS, sy = 90/ROWS;
+  for (let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) {
+    if (MAP[r][c]===1) { mmCtx.fillStyle='#0f3460'; mmCtx.fillRect(c*sx,r*sy,sx,sy); }
+    else { mmCtx.fillStyle='#1a1a2e'; mmCtx.fillRect(c*sx,r*sy,sx,sy); }
+  }
+  TABLES.forEach(t => {
+    mmCtx.fillStyle = t.color;
+    mmCtx.fillRect(t.x*sx, t.y*sy, t.w*sx, t.h*sy);
+  });
+  NPCS.forEach(n => {
+    mmCtx.fillStyle = n.color;
+    mmCtx.fillRect(n.x/TILE*sx-1, n.y/TILE*sy-1, 3, 3);
+  });
+  mmCtx.fillStyle = '#ffd700';
+  mmCtx.fillRect(player.x/TILE*sx-2, player.y/TILE*sy-2, 4, 4);
+}
+
+// ─── NEAR TABLE CHECK ───
+function nearTable() {
+  const px = player.x/TILE, py = player.y/TILE;
+  for (const t of TABLES) {
+    if (px > t.x-1.5 && px < t.x+t.w+0.5 && py > t.y-1.5 && py < t.y+t.h+0.5) return t;
+  }
+  return null;
+}
+
+// ─── MODAL ───
+const overlay = document.getElementById('modal-overlay');
+const modalBox = document.getElementById('modal-box');
+let activeGame = null;
+
+function openModal(html) {
+  modalBox.innerHTML = html;
+  overlay.classList.add('active');
+}
+function closeModal() {
+  overlay.classList.remove('active');
+  activeGame = null;
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && !overlay.classList.contains('active')) {
+    const t = nearTable();
+    if (t) launchGame(t);
+  }
+});
+
+function updateChipsDisplay() {
+  document.getElementById('hud-chips').textContent = playerChips;
+  const el = document.getElementById('modal-chips');
+  if (el) el.textContent = playerChips;
+}
+
+// ─────────────────────────────────────────────
+//  GAMES
+// ─────────────────────────────────────────────
+function launchGame(t) {
+  switch(t.id) {
+    case 'slots':     openSlots();     break;
+    case 'roulette':  openRoulette();  break;
+    case 'blackjack': openBlackjack(); break;
+    case 'poker':     openPoker();     break;
+    case 'craps':     openCraps();     break;
+    case 'baccarat':  openBaccarat();  break;
+    case 'keno':      openKeno();      break;
+    case 'bar':       openBar();       break;
+  }
+}
+
+// ── HELPERS ──
+function makeDeck() {
+  const suits = ['♠','♥','♦','♣'], ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const d = [];
+  for (const s of suits) for (const r of ranks) d.push({s,r});
+  for (let i=d.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [d[i],d[j]]=[d[j],d[i]]; }
+  return d;
+}
+function cardVal(r) {
+  if (['J','Q','K'].includes(r)) return 10;
+  if (r==='A') return 11;
+  return parseInt(r);
+}
+function handValue(hand) {
+  let v=0, aces=0;
+  for (const c of hand) { v+=cardVal(c.r); if(c.r==='A') aces++; }
+  while (v>21 && aces>0) { v-=10; aces--; }
+  return v;
+}
+function cardHTML(c, hidden) {
+  if (hidden) return `<div class="card back">?</div>`;
+  const red = c.s==='♥'||c.s==='♦';
+  return `<div class="card \${red?'red-card':''}">\${c.r}\${c.s}</div>`;
+}
+function cardsHTML(hand, hideSecond) {
+  return hand.map((c,i)=>cardHTML(c, hideSecond&&i===1)).join('');
+}
+
+// ═══════════════════════════════════════════
+//  SLOTS
+// ═══════════════════════════════════════════
+function openSlots() {
+  const symbols = ['🍒','🍋','🍊','🍇','⭐','7️⃣','💎'];
+  let bet = 10;
+  activeGame = 'slots';
+  function render(reels, msg, won) {
+    openModal(`
+      <h2>🎰 SLOT MACHINE</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div class="slot-reels">
+        \${(reels||['❓','❓','❓']).map(r=>`<div class="reel">\${r}</div>`).join('')}
+      </div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${msg||'Pull the lever!'}</div>
+      <div>BET: <input type="number" id="slot-bet" value="\${bet}" min="1" max="\${playerChips}" style="width:80px"> chips</div><br>
+      <button class="btn green" onclick="spinSlots()">🎰 SPIN!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  window.spinSlots = function() {
+    bet = parseInt(document.getElementById('slot-bet').value)||10;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    if (bet < 1) bet = 1;
+    const reels = [0,1,2].map(()=>symbols[Math.floor(Math.random()*symbols.length)]);
+    playerChips -= bet;
+    let won = 0, msg = 'No match. Try again!';
+    if (reels[0]===reels[1]&&reels[1]===reels[2]) {
+      if (reels[0]==='💎') { won=bet*50; msg='💎 JACKPOT!! x50!'; }
+      else if (reels[0]==='7️⃣') { won=bet*20; msg='🎉 LUCKY 7s! x20!'; }
+      else if (reels[0]==='⭐') { won=bet*10; msg='⭐ TRIPLE STAR! x10!'; }
+      else { won=bet*5; msg='🎊 THREE OF A KIND! x5!'; }
+    } else if (reels[0]===reels[1]||reels[1]===reels[2]||reels[0]===reels[2]) {
+      won=bet*2; msg='✨ PAIR! x2!';
+    }
+    playerChips += won;
+    render(reels, msg, won);
+  };
+  render();
+}
+
+// ═══════════════════════════════════════════
+//  ROULETTE
+// ═══════════════════════════════════════════
+function openRoulette() {
+  let bet = 10, betType = 'red', spinning = false;
+  const reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+  window.setRouletteBet = (t) => { betType = t; document.getElementById('rbet-type').textContent = t.toUpperCase(); };
+  window.spinRoulette = function() {
+    bet = parseInt(document.getElementById('rou-bet').value)||10;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    playerChips -= bet;
+    const num = Math.floor(Math.random()*37); // 0-36
+    const isRed = reds.includes(num);
+    const isBlack = num!==0&&!isRed;
+    const isEven = num!==0&&num%2===0;
+    let won = 0, result = '';
+    if (betType==='red' && isRed) { won=bet*2; result='WIN!'; }
+    else if (betType==='black' && isBlack) { won=bet*2; result='WIN!'; }
+    else if (betType==='even' && isEven) { won=bet*2; result='WIN!'; }
+    else if (betType==='odd' && num!==0&&num%2!==0) { won=bet*2; result='WIN!'; }
+    else if (betType==='1-18' && num>=1&&num<=18) { won=bet*2; result='WIN!'; }
+    else if (betType==='19-36' && num>=19&&num<=36) { won=bet*2; result='WIN!'; }
+    else if (betType==='straight' && parseInt(document.getElementById('straight-num').value)===num) { won=bet*36; result='STRAIGHT UP WIN! x36!'; }
+    else result = 'LOSE';
+    playerChips += won;
+    const color = num===0?'#2ecc71':isRed?'#e74c3c':'#333';
+    document.getElementById('rou-ball').textContent = num;
+    document.getElementById('rou-ball').style.background = color;
+    document.getElementById('rou-result').textContent = `Ball: \${num} (\${num===0?'GREEN':isRed?'RED':'BLACK'}) — \${result} \${won>0?'+'+won+' chips':''}`;
+    document.getElementById('rou-result').style.color = won>0?'#2ecc71':'#e74c3c';
+    updateChipsDisplay();
+  };
+  openModal(`
+    <h2>🎡 ROULETTE</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div class="roulette-wheel" id="rou-ball" style="background:#1a0000;font-size:36px">🎡</div>
+    <div id="rou-result" style="margin:8px 0;min-height:20px">Place your bet!</div>
+    <div>BET TYPE: <b id="rbet-type" style="color:#ffd700">RED</b></div>
+    <div style="margin:6px 0">
+      <button class="btn red" onclick="setRouletteBet('red')">RED</button>
+      <button class="btn" style="background:#333" onclick="setRouletteBet('black')">BLACK</button>
+      <button class="btn" onclick="setRouletteBet('even')">EVEN</button>
+      <button class="btn" onclick="setRouletteBet('odd')">ODD</button>
+      <button class="btn" onclick="setRouletteBet('1-18')">1-18</button>
+      <button class="btn" onclick="setRouletteBet('19-36')">19-36</button>
+      <button class="btn" onclick="setRouletteBet('straight')">STRAIGHT</button>
+    </div>
+    <div>Straight #: <input type="number" id="straight-num" value="7" min="0" max="36" style="width:60px"></div>
+    <div>BET: <input type="number" id="rou-bet" value="\${bet}" min="1" max="\${playerChips}" style="width:80px"> chips</div><br>
+    <button class="btn green" onclick="spinRoulette()">🎡 SPIN!</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ═══════════════════════════════════════════
+//  BLACKJACK
+// ═══════════════════════════════════════════
+function openBlackjack() {
+  let deck=[], playerHand=[], dealerHand=[], bet=25, phase='bet';
+  window.bjDeal = function() {
+    bet = parseInt(document.getElementById('bj-bet').value)||25;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    playerChips -= bet;
+    deck = makeDeck();
+    playerHand = [deck.pop(), deck.pop()];
+    dealerHand  = [deck.pop(), deck.pop()];
+    phase = 'play';
+    bjRender(false);
+  };
+  window.bjHit = function() {
+    playerHand.push(deck.pop());
+    if (handValue(playerHand)>21) bjEnd('bust');
+    else bjRender(false);
+  };
+  window.bjStand = function() {
+    while (handValue(dealerHand)<17) dealerHand.push(deck.pop());
+    bjEnd('stand');
+  };
+  window.bjDouble = function() {
+    if (playerChips < bet) { alert('Not enough chips!'); return; }
+    playerChips -= bet; bet *= 2;
+    playerHand.push(deck.pop());
+    if (handValue(playerHand)>21) bjEnd('bust');
+    else bjEnd('stand');
+  };
+  function bjEnd(reason) {
+    const pv = handValue(playerHand), dv = handValue(dealerHand);
+    let msg='', won=0;
+    if (reason==='bust') { msg='💥 BUST! Dealer wins.'; }
+    else if (dv>21) { msg='🎉 Dealer busts! You win!'; won=bet*2; }
+    else if (pv>dv) { msg='🎉 You win!'; won=bet*2; }
+    else if (pv===dv) { msg='🤝 Push (Tie)!'; won=bet; }
+    else { msg='😞 Dealer wins.'; }
+    if (pv===21&&playerHand.length===2) { msg='🃏 BLACKJACK! 3:2!'; won=Math.floor(bet*2.5); }
+    playerChips += won;
+    phase='done';
+    bjRender(true, msg);
+  }
+  function bjRender(reveal, msg) {
+    const pv = handValue(playerHand);
+    const dv = reveal ? handValue(dealerHand) : '?';
+    openModal(`
+      <h2>🃏 BLACKJACK</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span> | BET: \${bet}</div>
+      <div style="margin:8px 0">
+        <b>Dealer (\${dv}):</b>
+        <div class="card-row">\${cardsHTML(dealerHand, !reveal)}</div>
+      </div>
+      <div style="margin:8px 0">
+        <b>You (\${pv}):</b>
+        <div class="card-row">\${cardsHTML(playerHand, false)}</div>
+      </div>
+      \${msg?`<div style="color:\${playerChips>=0?'#2ecc71':'#e74c3c'};margin:8px 0;font-size:10px">\${msg}</div>`:''}
+      \${phase==='play'?`
+        <button class="btn green" onclick="bjHit()">HIT</button>
+        <button class="btn" onclick="bjStand()">STAND</button>
+        \${playerHand.length===2?`<button class="btn" onclick="bjDouble()">DOUBLE</button>`:''}
+      `:`
+        <button class="btn green" onclick="bjDeal()">NEW HAND</button>
+      `}
+      \${phase==='bet'?`<div>BET: <input type="number" id="bj-bet" value="\${bet}" min="1" max="\${playerChips}" style="width:80px"> <button class="btn green" onclick="bjDeal()">DEAL</button></div>`:''}
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  bjRender(false);
+}
+
+// ═══════════════════════════════════════════
+//  POKER (5-Card Draw vs AI)
+// ═══════════════════════════════════════════
+function openPoker() {
+  let deck=[], playerHand=[], aiHands=[], bet=20, phase='deal', pot=0;
+  const aiNames = ['Alice','Bob','Carol'];
+  function dealPoker() {
+    bet = parseInt(document.getElementById('pk-bet')?.value)||20;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    deck = makeDeck();
+    playerHand = [deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()];
+    aiHands = aiNames.map(()=>[deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()]);
+    pot = bet * (aiNames.length+1);
+    playerChips -= bet;
+    phase = 'draw';
+    pokerRender();
+  }
+  window.pokerDraw = function() {
+    const checks = document.querySelectorAll('.discard-cb');
+    const discard = [];
+    checks.forEach((cb,i)=>{ if(cb.checked) discard.push(i); });
+    discard.sort((a,b)=>b-a).forEach(i=>{ playerHand.splice(i,1); playerHand.push(deck.pop()); });
+    aiHands = aiHands.map(h=>{
+      const keep = h.filter(()=>Math.random()>0.4);
+      while(keep.length<5) keep.push(deck.pop());
+      return keep;
+    });
+    phase='showdown';
+    pokerShowdown();
+  };
+  function rankHand(hand) {
+    const ranks = hand.map(c=>c.r);
+    const suits = hand.map(c=>c.s);
+    const vals = ranks.map(r=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].indexOf(r)).sort((a,b)=>b-a);
+    const counts = {};
+    vals.forEach(v=>counts[v]=(counts[v]||0)+1);
+    const groups = Object.values(counts).sort((a,b)=>b-a);
+    const flush = new Set(suits).size===1;
+    const straight = vals[0]-vals[4]===4 && new Set(vals).size===5;
+    if (flush&&straight) return 8;
+    if (groups[0]===4) return 7;
+    if (groups[0]===3&&groups[1]===2) return 6;
+    if (flush) return 5;
+    if (straight) return 4;
+    if (groups[0]===3) return 3;
+    if (groups[0]===2&&groups[1]===2) return 2;
+    if (groups[0]===2) return 1;
+    return 0;
+  }
+  const RANK_NAMES = ['High Card','One Pair','Two Pair','Three of a Kind','Straight','Flush','Full House','Four of a Kind','Straight Flush'];
+  function pokerShowdown() {
+    const pr = rankHand(playerHand);
+    const ars = aiHands.map(h=>rankHand(h));
+    const allRanks = [pr, ...ars];
+    const best = Math.max(...allRanks);
+    let msg, won=0;
+    if (pr===best) { won=pot; msg=`🏆 YOU WIN! \${RANK_NAMES[pr]}! +\${won} chips!`; }
+    else { msg=`😞 You lose. Your hand: \${RANK_NAMES[pr]}`; }
+    playerChips += won;
+    openModal(`
+      <h2>♠ POKER — SHOWDOWN</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0;font-size:10px">\${msg}</div>
+      <b>Your hand (\${RANK_NAMES[pr]}):</b>
+      <div class="card-row">\${cardsHTML(playerHand,false)}</div>
+      \${aiNames.map((n,i)=>`<b>\${n} (\${RANK_NAMES[ars[i]]}):</b><div class="card-row">\${cardsHTML(aiHands[i],false)}</div>`).join('')}
+      <button class="btn green" onclick="openPoker()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  function pokerRender() {
+    openModal(`
+      <h2>♠ POKER (5-Card Draw)</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span> | POT: \${pot}</div>
+      \${phase==='deal'?`<div>BET: <input type="number" id="pk-bet" value="\${bet}" min="1" max="\${playerChips}" style="width:80px"> <button class="btn green" onclick="openPokerDeal()">DEAL</button></div>`:''}
+      \${phase==='draw'?`
+        <b>Your hand:</b><br>
+        <div class="card-row">\${playerHand.map((c,i)=>`<div style="text-align:center"><label>\${cardHTML(c,false)}<br><input type="checkbox" class="discard-cb"> Discard</label></div>`).join('')}</div>
+        <br><button class="btn green" onclick="pokerDraw()">DRAW</button>
+      `:''}
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  window.openPokerDeal = dealPoker;
+  pokerRender();
+}
+
+// ═══════════════════════════════════════════
+//  CRAPS
+// ═══════════════════════════════════════════
+function openCraps() {
+  let point = null, bet = 20, phase = 'comeout';
+  window.rollCraps = function() {
+    bet = parseInt(document.getElementById('craps-bet').value)||20;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    const d1 = Math.ceil(Math.random()*6), d2 = Math.ceil(Math.random()*6);
+    const sum = d1+d2;
+    let msg='', won=0;
+    playerChips -= bet;
+    if (phase==='comeout') {
+      if ([7,11].includes(sum)) { won=bet*2; msg=`🎉 Natural \${sum}! You win!`; }
+      else if ([2,3,12].includes(sum)) { msg=`💥 Craps \${sum}! You lose!`; }
+      else { point=sum; phase='point'; msg=`Point is \${sum}! Roll again!`; playerChips+=bet; return openModal(crapsHTML(d1,d2,msg)); }
+    } else {
+      if (sum===point) { won=bet*2; msg=`🎉 Made the point (\${sum})! You win!`; phase='comeout'; point=null; }
+      else if (sum===7) { msg=`💥 Seven out! You lose!`; phase='comeout'; point=null; }
+      else { msg=`Rolled \${sum}. Point is still \${point}. Keep rolling!`; playerChips+=bet; return openModal(crapsHTML(d1,d2,msg)); }
+    }
+    playerChips += won;
+    openModal(crapsHTML(d1,d2,msg,won));
+  };
+  function crapsHTML(d1,d2,msg,won) {
+    return `
+      <h2>🎲 CRAPS</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      \${point?`<div style="color:#ffd700">POINT: \${point}</div>`:'<div>Come-out roll</div>'}
+      <div style="font-size:48px;margin:10px 0">\${dieFace(d1||1)} \${dieFace(d2||1)}</div>
+      \${msg?`<div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${msg}</div>`:''}
+      <div>BET: <input type="number" id="craps-bet" value="\${bet}" min="1" max="\${playerChips}" style="width:80px"> chips</div><br>
+      <button class="btn green" onclick="rollCraps()">🎲 ROLL!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `;
+  }
+  function dieFace(n) { return ['','⚀','⚁','⚂','⚃','⚄','⚅'][n]; }
+  openModal(crapsHTML(0,0,'',0));
+}
+
+// ═══════════════════════════════════════════
+//  BACCARAT
+// ═══════════════════════════════════════════
+function openBaccarat() {
+  window.dealBaccarat = function() {
+    const bet = parseInt(document.getElementById('bac-bet').value)||20;
+    const side = document.querySelector('input[name="bac-side"]:checked')?.value||'player';
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    playerChips -= bet;
+    const deck = makeDeck();
+    const bacVal = c => Math.min(cardVal(c.r),10)%10;
+    const ph = [deck.pop(),deck.pop()];
+    const bh = [deck.pop(),deck.pop()];
+    let pv = (bacVal(ph[0])+bacVal(ph[1]))%10;
+    let bv = (bacVal(bh[0])+bacVal(bh[1]))%10;
+    if (pv<=5) { ph.push(deck.pop()); pv=(pv+bacVal(ph[2]))%10; }
+    if (bv<=5) { bh.push(deck.pop()); bv=(bv+bacVal(bh[2]))%10; }
+    let result, won=0;
+    if (pv>bv) result='player';
+    else if (bv>pv) result='banker';
+    else result='tie';
+    if (side===result) {
+      won = side==='tie' ? bet*9 : side==='banker' ? Math.floor(bet*1.95) : bet*2;
+    }
+    playerChips += won;
+    openModal(`
+      <h2>🀄 BACCARAT</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="margin:8px 0"><b>Player (\${pv}):</b> <div class="card-row">\${cardsHTML(ph,false)}</div></div>
+      <div style="margin:8px 0"><b>Banker (\${bv}):</b> <div class="card-row">\${cardsHTML(bh,false)}</div></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0;font-size:10px">
+        Result: \${result.toUpperCase()} wins! \${won>0?'You win +'+won+' chips!':'You lose.'}
+      </div>
+      <button class="btn green" onclick="openBaccarat()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  openModal(`
+    <h2>🀄 BACCARAT</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="margin:8px 0">Bet on:</div>
+    <label><input type="radio" name="bac-side" value="player" checked> Player (1:1)</label><br>
+    <label><input type="radio" name="bac-side" value="banker"> Banker (0.95:1)</label><br>
+    <label><input type="radio" name="bac-side" value="tie"> Tie (8:1)</label><br><br>
+    <div>BET: <input type="number" id="bac-bet" value="20" min="1" max="\${playerChips}" style="width:80px"> chips</div><br>
+    <button class="btn green" onclick="dealBaccarat()">DEAL</button>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+}
+
+// ═══════════════════════════════════════════
+//  KENO
+// ═══════════════════════════════════════════
+function openKeno() {
+  let picked = new Set();
+  window.kenoToggle = function(n) {
+    if (picked.has(n)) picked.delete(n);
+    else if (picked.size<10) picked.add(n);
+    renderKeno();
+  };
+  window.playKeno = function() {
+    const bet = parseInt(document.getElementById('keno-bet').value)||10;
+    if (bet > playerChips) { alert('Not enough chips!'); return; }
+    if (picked.size===0) { alert('Pick at least 1 number!'); return; }
+    playerChips -= bet;
+    const drawn = new Set();
+    while(drawn.size<20) drawn.add(Math.ceil(Math.random()*80));
+    const matches = [...picked].filter(n=>drawn.has(n)).length;
+    const payTable = [0,1,2,3,5,8,12,20,40,80,200];
+    const mult = payTable[Math.min(matches,10)];
+    const won = bet * mult;
+    playerChips += won;
+    const nums = Array.from({length:80},(_,i)=>i+1);
+    openModal(`
+      <h2>🔢 KENO — RESULTS</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="color:\${won>0?'#2ecc71':'#e74c3c'};margin:8px 0">\${matches} matches! \${won>0?'+'+won+' chips!':'No win.'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;max-width:400px">
+        \${nums.map(n=>`<div style="width:24px;height:24px;font-size:6px;display:flex;align-items:center;justify-content:center;background:\${drawn.has(n)&&picked.has(n)?'#2ecc71':drawn.has(n)?'#e74c3c':picked.has(n)?'#3498db':'#222'};border:1px solid #555">\${n}</div>`).join('')}
+      </div>
+      <div style="margin-top:8px;font-size:7px">🟢=Match 🔴=Drawn 🔵=Your pick</div>
+      <button class="btn green" onclick="openKeno()">PLAY AGAIN</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  };
+  function renderKeno() {
+    const nums = Array.from({length:80},(_,i)=>i+1);
+    openModal(`
+      <h2>🔢 KENO</h2>
+      <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+      <div style="margin:6px 0">Pick up to 10 numbers (\${picked.size}/10 selected):</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;max-width:400px">
+        \${nums.map(n=>`<div onclick="kenoToggle(\${n})" style="width:24px;height:24px;font-size:6px;display:flex;align-items:center;justify-content:center;background:\${picked.has(n)?'#ffd700':'#222'};color:\${picked.has(n)?'#000':'#fff'};border:1px solid #555;cursor:pointer">\${n}</div>`).join('')}
+      </div>
+      <div style="margin:8px 0">BET: <input type="number" id="keno-bet" value="10" min="1" max="\${playerChips}" style="width:80px"> chips</div>
+      <button class="btn green" onclick="playKeno()">PLAY!</button>
+      <button class="btn gray" onclick="closeModal()">LEAVE</button>
+    `);
+  }
+  renderKeno();
+}
+
+// ═══════════════════════════════════════════
+//  BAR
+// ═══════════════════════════════════════════
+function openBar() {
+  const drinks = [
+    { name:'🍺 Beer',        cost:5,  msg:'Refreshing! Nothing happens.' },
+    { name:'🍷 Wine',        cost:10, msg:'Smooth. You feel lucky! (+50 chips)', bonus:50 },
+    { name:'🥃 Whiskey',     cost:15, msg:'Strong! Vision blurs... (-20 chips)', bonus:-20 },
+    { name:'🍹 Cocktail',    cost:20, msg:'Delicious! Lucky streak! (+100 chips)', bonus:100 },
+    { name:'☕ Coffee',      cost:5,  msg:'Focused! Nothing happens.' },
+    { name:'💊 Energy Shot', cost:25, msg:'MEGA ENERGY! (+200 chips!)', bonus:200 },
+  ];
+  openModal(`
+    <h2>🍺 THE LUCKY BAR</h2>
+    <div>CHIPS: <span id="modal-chips" style="color:#ffd700">\${playerChips}</span></div>
+    <div style="margin:8px 0">What'll it be, stranger?</div>
+    \${drinks.map((d,i)=>`
+      <div style="margin:4px 0;display:flex;align-items:center;gap:8px">
+        <button class="btn" onclick="buyDrink(\${i})">\${d.name} — \${d.cost} chips</button>
+      </div>
+    `).join('')}
+    <div id="bar-msg" style="margin:8px 0;min-height:20px;color:#ffd700"></div>
+    <button class="btn gray" onclick="closeModal()">LEAVE</button>
+  `);
+  window.buyDrink = function(i) {
+    const d = drinks[i];
+    if (playerChips < d.cost) { document.getElementById('bar-msg').textContent='Not enough chips!'; return; }
+    playerChips -= d.cost;
+    if (d.bonus) playerChips += d.bonus;
+    if (playerChips < 0) playerChips = 0;
+    document.getElementById('bar-msg').textContent = d.msg;
+    updateChipsDisplay();
+  };
+}
+
+// ─────────────────────────────────────────────
+//  GAME LOOP
+// ─────────────────────────────────────────────
+let lastTime = 0;
+function gameLoop(ts) {
+  const dt = ts - lastTime; lastTime = ts;
+  if (!overlay.classList.contains('active')) update(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+  let dx=0, dy=0;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx=-1;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) dx=1;
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) dy=-1;
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) dy=1;
+
+  if (dx!==0||dy!==0) {
+    const spd = player.speed;
+    const nx = player.x + dx*spd, ny = player.y + dy*spd;
+    if (canMove(nx, player.y, player.w, player.h)) player.x = nx;
+    if (canMove(player.x, ny, player.w, player.h)) player.y = ny;
+    player.frameTimer += dt;
+    if (player.frameTimer > 150) { player.frame
